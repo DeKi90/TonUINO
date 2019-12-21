@@ -205,6 +205,13 @@
   10   19 00 00 00 - end track
   11   00 00 00 00
 
+  analog volume dial:
+  ===================
+  if you want to use an potentiometer to set the volume
+  you can connect it to any of the analog inputs. The volume
+  will only be written to the DFMiniMp3 if it changes.
+  You can decide to keep the long button press for volume up or remove it
+
   additional non standard libraries used in this firmware:
   ========================================================
 
@@ -214,6 +221,7 @@
   IRremote.h - https://github.com/z3t0/Arduino-IRremote
   WS2812.h - https://github.com/cpldcpu/light_ws2812
   Vcc.h - https://github.com/Yveaux/Arduino_Vcc
+  PinChangeInterrput.h - https://github.com/NicoHood/PinChangeInterrupt
 */
 
 // uncomment the below line to enable five button support
@@ -232,10 +240,18 @@
 // #define STATUSLEDRGB
 
 // uncomment the below line to enable low voltage shutdown support
-// #define LOWVOLTAGE
+#define LOWVOLTAGE
 
 // uncomment the below line to flip the shutdown pin logic
 // #define POLOLUSWITCH
+
+// uncomment the below line to activate analog volume control
+#define ANALOGVOL
+// uncomment the below line to surpress volume control by buttons
+#define NOBTNVOL
+
+// uncomment line below for rotary encoder instead of 3 buttons
+#define ROTARY
 
 // include required libraries
 #include <avr/sleep.h>
@@ -265,54 +281,120 @@ using namespace ace_button;
 #endif
 
 // playback modes
-enum {NOMODE, STORY, ALBUM, PARTY, SINGLE, STORYBOOK, VSTORY, VALBUM, VPARTY};
+enum
+{
+  NOMODE,
+  STORY,
+  ALBUM,
+  PARTY,
+  SINGLE,
+  STORYBOOK,
+  VSTORY,
+  VALBUM,
+  VPARTY
+};
 
 // button actions
-enum {NOACTION,
-      B0P, B1P, B2P, B3P, B4P,
-      B0H, B1H, B2H, B3H, B4H,
-      B0D, B1D, B2D, B3D, B4D,
-      IRU, IRD, IRL, IRR, IRC, IRM, IRP
-     };
+enum
+{
+  NOACTION,
+  B0P,
+  B1P,
+  B2P,
+  B3P,
+  B4P,
+  B0H,
+  B1H,
+  B2H,
+  B3H,
+  B4H,
+  B0D,
+  B1D,
+  B2D,
+  B3D,
+  B4D,
+  IRU,
+  IRD,
+  IRL,
+  IRR,
+  IRC,
+  IRM,
+  IRP
+};
 
 // button modes
-enum {INIT, PLAY, PAUSE, PIN, CONFIG};
+enum
+{
+  INIT,
+  PLAY,
+  PAUSE,
+  PIN,
+  CONFIG
+};
 
 // shutdown timer actions
-enum {START, STOP, CHECK, SHUTDOWN};
+enum
+{
+  START,
+  STOP,
+  CHECK,
+  SHUTDOWN
+};
 
 // preference actions
-enum {READ, WRITE, MIGRATE, RESET, RESET_PROGRESS};
+enum
+{
+  READ,
+  WRITE,
+  MIGRATE,
+  RESET,
+  RESET_PROGRESS
+};
 
 // status led actions
-enum {OFF, SOLID, PULSE, BLINK, BURST2, BURST4, BURST8};
+enum
+{
+  OFF,
+  SOLID,
+  PULSE,
+  BLINK,
+  BURST2,
+  BURST4,
+  BURST8
+};
 
 // define general configuration constants
-const uint8_t mp3SerialTxPin = 3;                   // mp3 serial tx, wired with 1k ohm to rx pin of DFPlayer Mini
-const uint8_t mp3SerialRxPin = 2;                   // mp3 serial rx, wired straight to tx pin of DFPlayer Mini
-const uint8_t mp3BusyPin = 4;                       // reports play state of DFPlayer Mini (LOW = playing)
+const uint8_t mp3SerialTxPin = 3; // mp3 serial tx, wired with 1k ohm to rx pin of DFPlayer Mini
+const uint8_t mp3SerialRxPin = 2; // mp3 serial rx, wired straight to tx pin of DFPlayer Mini
+const uint8_t mp3BusyPin = 4;     // reports play state of DFPlayer Mini (LOW = playing)
 #if defined IRREMOTE
-const uint8_t irReceiverPin = 5;                    // pin used for the ir receiver
+const uint8_t irReceiverPin = 5; // pin used for the ir receiver
 #endif
 #if defined STATUSLED ^ defined STATUSLEDRGB
-const uint8_t statusLedPin = 6;                     // pin used for vanilla status led or ws281x status led(s)
-const uint8_t statusLedCount = 1;                   // number of ws281x status led(s)
-const uint8_t statusLedMaxBrightness = 20;          // max brightness of ws281x status led(s) (in percent)
+const uint8_t statusLedPin = 6;            // pin used for vanilla status led or ws281x status led(s)
+const uint8_t statusLedCount = 1;          // number of ws281x status led(s)
+const uint8_t statusLedMaxBrightness = 20; // max brightness of ws281x status led(s) (in percent)
 #endif
-const uint8_t shutdownPin = 7;                      // pin used to shutdown the system
-const uint8_t nfcResetPin = 9;                      // used for spi communication to nfc module
-const uint8_t nfcSlaveSelectPin = 10;               // used for spi communication to nfc module
-const uint8_t button0Pin = A0;                      // middle button
-const uint8_t button1Pin = A1;                      // right button
-const uint8_t button2Pin = A2;                      // left button
+const uint8_t shutdownPin = 7;        // pin used to shutdown the system
+const uint8_t nfcResetPin = 9;        // used for spi communication to nfc module
+const uint8_t nfcSlaveSelectPin = 10; // used for spi communication to nfc module
+const uint8_t button0Pin = A1;        // middle button
+const uint8_t button1Pin = A3;        // right button
+const uint8_t button2Pin = A2;        // left button
 #if defined FIVEBUTTONS
-const uint8_t button3Pin = A3;                      // optional 4th button
-const uint8_t button4Pin = A4;                      // optional 5th button
+const uint8_t button3Pin = A3; // optional 4th button
+const uint8_t button4Pin = A4; // optional 5th button
 #endif
-const uint16_t buttonClickDelay = 1000;             // time during which a button click is still a click (in milliseconds)
-const uint16_t buttonShortLongPressDelay = 2000;    // time after which a button press is considered a long press (in milliseconds)
-const uint16_t buttonLongLongPressDelay = 5000;     // longer long press delay for special cases, i.e. to trigger erase nfc tag mode (in milliseconds)
-const uint32_t debugConsoleSpeed = 9600;            // speed for the debug console
+#if defined ANALOGVOL
+const uint8_t volumePin = A0; // analog pin for volume control
+#endif
+#if defined ROTARY
+const uint8_t longRot = 3; // threshold for a long rotation, otherwise counted
+#endif
+const uint16_t buttonClickDelay = 1000;          // time during which a button click is still a click (in milliseconds)
+const uint16_t buttonShortLongPressDelay = 2000; // time after which a button press is considered a long press (in milliseconds)
+const uint16_t buttonLongLongPressDelay = 5000;  // longer long press delay for special cases, i.e. to trigger erase nfc tag mode (in milliseconds)
+const uint32_t debugConsoleSpeed = 115200;         // speed for the debug console
 
 // number of mp3 files in advert folder + number of mp3 files in mp3 folder
 const uint16_t msgCount = 576;
@@ -322,10 +404,10 @@ const uint8_t magicCookieHex[4] = {0x13, 0x37, 0xb3, 0x47};
 
 #if defined PINCODE
 // define pin code, allowed enums for pinCode[]: B0P, B1P, B2P (plus B3P & B4P if FIVEBUTTONS is enabled)
-const uint8_t pinCode[] = {B0P, B2P, B1P, B0P};     // for example play/pause, vol-, vol+, play/pause
+const uint8_t pinCode[] = {B0P, B2P, B1P, B0P}; // for example play/pause, vol-, vol+, play/pause
 const uint8_t pinCodeLength = sizeof(pinCode);
 const uint8_t pinCodeIrToButtonMapping[] = {B1P, B2P, B3P, B4P, NOACTION, IRM, B0P};
-const uint64_t enterPinCodeTimeout = 10000;         // time to enter the pin code (in milliseconds)
+const uint64_t enterPinCodeTimeout = 10000; // time to enter the pin code (in milliseconds)
 #endif
 
 // default values for preferences
@@ -350,17 +432,17 @@ const uint16_t irRemoteUserCodesDefault[7] = {};
   };
 */
 const uint16_t irRemoteCodes[][7] = {
-  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000}   // example, replace 0x0000 with respective codes as per above
+    {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000} // example, replace 0x0000 with respective codes as per above
 };
 const uint8_t irRemoteCount = sizeof(irRemoteCodes) / 14;
 const uint8_t irRemoteCodeCount = sizeof(irRemoteCodes) / (2 * irRemoteCount);
 
 #if defined LOWVOLTAGE
 // define constants for shutdown feature
-const float shutdownMinVoltage = 4.4;                        // minimum expected voltage level (in volts)
-const float shutdownWarnVoltage = 4.8;                       // warning voltage level (in volts)
-const float shutdownMaxVoltage = 5.0;                        // maximum expected voltage level (in volts)
-const float shutdownVoltageCorrection = 1.0 / 1.0;           // voltage measured by multimeter divided by reported voltage
+const float shutdownMinVoltage = 3.7;              // minimum expected voltage level (in volts)
+const float shutdownWarnVoltage = 3.9;             // warning voltage level (in volts)
+const float shutdownMaxVoltage = 4.8;              // maximum expected voltage level (in volts)
+const float shutdownVoltageCorrection = 1.0 / 1.0; // voltage measured by multimeter divided by reported voltage
 #endif
 
 // define strings
@@ -369,7 +451,8 @@ const char *nfcStatusMessage[] = {" ", "read", "write", "ok", "failed"};
 const char *mp3EqualizerName[] = {" ", "normal", "pop", "rock", "jazz", "classic", "bass"};
 
 // this struct stores nfc tag data
-struct nfcTagStruct {
+struct nfcTagStruct
+{
   uint32_t cookie = 0;
   uint8_t version = 0;
   uint8_t folder = 0;
@@ -379,7 +462,8 @@ struct nfcTagStruct {
 };
 
 // this struct stores playback state
-struct playbackStruct {
+struct playbackStruct
+{
   bool isLocked = false;
   bool isPlaying = false;
   bool isFresh = true;
@@ -395,7 +479,8 @@ struct playbackStruct {
 };
 
 // this struct stores preferences
-struct preferenceStruct {
+struct preferenceStruct
+{
   uint32_t cookie = 0;
   uint8_t version = 0;
   uint8_t mp3StartVolume = 0;
@@ -420,6 +505,9 @@ preferenceStruct preference;
 // declare functions
 void checkForInput();
 void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* buttonState */);
+#if defined ROTARY
+void checkRotaryEncoder();
+#endif
 void switchButtonConfiguration(uint8_t buttonMode);
 void waitPlaybackToFinish(uint8_t red, uint8_t green, uint8_t blue, uint16_t statusLedUpdateInterval);
 void printModeFolderTrack(bool cr);
@@ -439,106 +527,135 @@ bool enterPinCode();
 void statusLedUpdate(uint8_t statusLedAction, uint8_t red, uint8_t green, uint8_t blue, uint16_t statusLedUpdateInterval);
 void statusLedUpdateHal(uint8_t red, uint8_t green, uint8_t blue, int16_t brightness);
 #endif
+#if defined ANALOGVOL
+void updateAnalogVol();
+#endif
 
 // used by DFPlayer Mini library during callbacks
-class Mp3Notify {
-  public:
-    static void OnError(uint16_t returnValue) {
-      switch (returnValue) {
-        case DfMp3_Error_Busy: {
-            Serial.print(F("busy"));
-            break;
-          }
-        case DfMp3_Error_Sleeping: {
-            Serial.print(F("sleep"));
-            break;
-          }
-        case DfMp3_Error_SerialWrongStack: {
-            Serial.print(F("serial stack"));
-            break;
-          }
-        case DfMp3_Error_CheckSumNotMatch: {
-            Serial.print(F("checksum"));
-            break;
-          }
-        case DfMp3_Error_FileIndexOut: {
-            Serial.print(F("file index"));
-            break;
-          }
-        case DfMp3_Error_FileMismatch: {
-            Serial.print(F("file mismatch"));
-            break;
-          }
-        case DfMp3_Error_Advertise: {
-            Serial.print(F("advertise"));
-            break;
-          }
-        case DfMp3_Error_General: {
-            Serial.print(F("general"));
-            break;
-          }
-        default: {
-            Serial.print(F("unknown"));
-            break;
-          }
-      }
-      Serial.println(F(" error"));
+class Mp3Notify
+{
+public:
+  static void OnError(uint16_t returnValue)
+  {
+    switch (returnValue)
+    {
+    case DfMp3_Error_Busy:
+    {
+      Serial.print(F("busy"));
+      break;
     }
-    static void OnPlayFinished(uint16_t returnValue) {
-      playNextTrack(returnValue, true, false);
+    case DfMp3_Error_Sleeping:
+    {
+      Serial.print(F("sleep"));
+      break;
     }
-    static void OnCardOnline(uint16_t returnValue) {
-      Serial.println(F("sd online"));
+    case DfMp3_Error_SerialWrongStack:
+    {
+      Serial.print(F("serial stack"));
+      break;
     }
-    static void OnCardInserted(uint16_t returnValue) {
-      Serial.println(F("sd in"));
+    case DfMp3_Error_CheckSumNotMatch:
+    {
+      Serial.print(F("checksum"));
+      break;
     }
-    static void OnCardRemoved(uint16_t returnValue) {
-      Serial.println(F("sd out"));
+    case DfMp3_Error_FileIndexOut:
+    {
+      Serial.print(F("file index"));
+      break;
     }
-    static void OnUsbOnline(uint16_t returnValue) {
-      Serial.println(F("usb online"));
+    case DfMp3_Error_FileMismatch:
+    {
+      Serial.print(F("file mismatch"));
+      break;
     }
-    static void OnUsbInserted(uint16_t returnValue) {
-      Serial.println(F("usb in"));
+    case DfMp3_Error_Advertise:
+    {
+      Serial.print(F("advertise"));
+      break;
     }
-    static void OnUsbRemoved(uint16_t returnValue) {
-      Serial.println(F("usb out"));
+    case DfMp3_Error_General:
+    {
+      Serial.print(F("general"));
+      break;
     }
+    default:
+    {
+      Serial.print(F("unknown"));
+      break;
+    }
+    }
+    Serial.println(F(" error"));
+  }
+  static void OnPlayFinished(uint16_t returnValue)
+  {
+    playNextTrack(returnValue, true, false);
+  }
+  static void OnCardOnline(uint16_t returnValue)
+  {
+    Serial.println(F("sd online"));
+  }
+  static void OnCardInserted(uint16_t returnValue)
+  {
+    Serial.println(F("sd in"));
+  }
+  static void OnCardRemoved(uint16_t returnValue)
+  {
+    Serial.println(F("sd out"));
+  }
+  static void OnUsbOnline(uint16_t returnValue)
+  {
+    Serial.println(F("usb online"));
+  }
+  static void OnUsbInserted(uint16_t returnValue)
+  {
+    Serial.println(F("usb in"));
+  }
+  static void OnUsbRemoved(uint16_t returnValue)
+  {
+    Serial.println(F("usb out"));
+  }
 };
 
-SoftwareSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin);                     // create SoftwareSerial instance
-MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);                              // create MFRC522 instance
-DFMiniMp3<SoftwareSerial, Mp3Notify> mp3(mp3Serial);                          // create DFMiniMp3 instance
-ButtonConfig button0Config;                                                   // create ButtonConfig instance
-ButtonConfig button1Config;                                                   // create ButtonConfig instance
-ButtonConfig button2Config;                                                   // create ButtonConfig instance
-AceButton button0(&button0Config);                                            // create AceButton instance
-AceButton button1(&button1Config);                                            // create AceButton instance
-AceButton button2(&button2Config);                                            // create AceButton instance
+SoftwareSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin); // create SoftwareSerial instance
+MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);          // create MFRC522 instance
+DFMiniMp3<SoftwareSerial, Mp3Notify> mp3(mp3Serial);      // create DFMiniMp3 instance
+ButtonConfig button0Config;                               // create ButtonConfig instance
+ButtonConfig button1Config;                               // create ButtonConfig instance
+ButtonConfig button2Config;                               // create ButtonConfig instance
+AceButton button0(&button0Config);                        // create AceButton instance
+AceButton button1(&button1Config);                        // create AceButton instance
+AceButton button2(&button2Config);                        // create AceButton instance
 #if defined FIVEBUTTONS
-ButtonConfig button3Config;                                                   // create ButtonConfig instance
-ButtonConfig button4Config;                                                   // create ButtonConfig instance
-AceButton button3(&button3Config);                                            // create AceButton instance
-AceButton button4(&button4Config);                                            // create AceButton instance
+ButtonConfig button3Config;        // create ButtonConfig instance
+ButtonConfig button4Config;        // create ButtonConfig instance
+AceButton button3(&button3Config); // create AceButton instance
+AceButton button4(&button4Config); // create AceButton instance
 #endif
 
 #if defined IRREMOTE
-IRrecv irReceiver(irReceiverPin);                                             // create IRrecv instance
-decode_results irReading;                                                     // create decode_results instance to store received ir reading
+IRrecv irReceiver(irReceiverPin); // create IRrecv instance
+decode_results irReading;         // create decode_results instance to store received ir reading
 #endif
 
 #if defined STATUSLED ^ defined STATUSLEDRGB
 #if defined STATUSLEDRGB
-WS2812 rgbLed(statusLedCount);                                                // create WS2812 instance
+WS2812 rgbLed(statusLedCount); // create WS2812 instance
 #endif
 #endif
 
 #if defined LOWVOLTAGE
-Vcc shutdownVoltage(shutdownVoltageCorrection);                               // create Vcc instance
+Vcc shutdownVoltage(shutdownVoltageCorrection); // create Vcc instance
 #endif
 
-void setup() {
+#if defined ROTARY
+uint32_t lastRot = 0;
+int8_t numRot = 0;
+uint8_t valRot = digitalRead(button2Pin);
+#endif
+
+void setup()
+{
   // things we need to do immediately on startup
   pinMode(shutdownPin, OUTPUT);
 #if defined POLOLUSWITCH
@@ -655,12 +772,15 @@ void setup() {
 #endif
 
   // hold down all three buttons while powering up: erase the eeprom contents
-  if (button0.isPressedRaw() && button1.isPressedRaw() && button2.isPressedRaw()) {
+  if (button0.isPressedRaw() && button1.isPressedRaw() && button2.isPressedRaw())
+  {
 #if defined PINCODE
-    if (enterPinCode()) {
+    if (enterPinCode())
+    {
 #endif
       Serial.println(F("init eeprom"));
-      for (uint16_t i = 0; i < EEPROM.length(); i++) {
+      for (uint16_t i = 0; i < EEPROM.length(); i++)
+      {
         EEPROM.update(i, 0);
       }
       preferences(RESET);
@@ -679,42 +799,53 @@ void setup() {
   Serial.println(F("ready"));
 }
 
-void loop() {
+void loop()
+{
   playback.isPlaying = !digitalRead(mp3BusyPin);
   checkForInput();
   shutdownTimer(CHECK);
 
 #if defined LOWVOLTAGE
   // if low voltage level is reached, store progress and shutdown
-  if (shutdownVoltage.Read_Volts() <= shutdownMinVoltage) {
-    if (playback.currentTag.mode == STORYBOOK) EEPROM.update(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
+  if (shutdownVoltage.Read_Volts() <= shutdownMinVoltage)
+  {
+    if (playback.currentTag.mode == STORYBOOK)
+      EEPROM.update(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
     mp3.playMp3FolderTrack(808);
     waitPlaybackToFinish(255, 0, 0, 100);
     shutdownTimer(SHUTDOWN);
   }
-  else if (shutdownVoltage.Read_Volts() <= shutdownWarnVoltage) {
+  else if (shutdownVoltage.Read_Volts() <= shutdownWarnVoltage)
+  {
 #if defined STATUSLED ^ defined STATUSLEDRGB
     statusLedUpdate(BLINK, 255, 0, 0, 100);
 #endif
   }
-  else {
+  else
+  {
 #if defined STATUSLED ^ defined STATUSLEDRGB
-    if (playback.isPlaying) statusLedUpdate(SOLID, 0, 255, 0, 100);
-    else statusLedUpdate(PULSE, 0, 255, 0, 100);
+    if (playback.isPlaying)
+      statusLedUpdate(SOLID, 0, 255, 0, 100);
+    else
+      statusLedUpdate(PULSE, 0, 255, 0, 100);
 #endif
   }
 #else
 #if defined STATUSLED ^ defined STATUSLEDRGB
-  if (playback.isPlaying) statusLedUpdate(SOLID, 0, 255, 0, 100);
-  else statusLedUpdate(PULSE, 0, 255, 0, 100);
+  if (playback.isPlaying)
+    statusLedUpdate(SOLID, 0, 255, 0, 100);
+  else
+    statusLedUpdate(PULSE, 0, 255, 0, 100);
 #endif
 #endif
 
   // ################################################################################
   // # main code block, if nfc tag is detected and TonUINO is not locked do something
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() && !playback.isLocked) {
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() && !playback.isLocked)
+  {
     // if the current playback mode is story book mode, only while playing: store the current progress
-    if (playback.currentTag.mode == STORYBOOK && playback.isPlaying) {
+    if (playback.currentTag.mode == STORYBOOK && playback.isPlaying)
+    {
       Serial.print(F("save "));
       printModeFolderTrack(true);
       EEPROM.update(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
@@ -722,84 +853,119 @@ void loop() {
     uint8_t readNfcTagStatus = readNfcTagData();
     // ##############################
     // # nfc tag is successfully read
-    if (readNfcTagStatus == 1) {
+    if (readNfcTagStatus == 1)
+    {
       // #############################################################################
       // # nfc tag has our magic cookie on it, use data from nfc tag to start playback
-      if (playback.currentTag.cookie == magicCookie) {
+      if (playback.currentTag.cookie == magicCookie)
+      {
         switchButtonConfiguration(PLAY);
         shutdownTimer(STOP);
 
         randomSeed(micros());
 
         // prepare boundaries for playback
-        switch (playback.currentTag.mode) {
-          case STORY: {}
-          case ALBUM: {}
-          case PARTY: {}
-          case SINGLE: {}
-          case STORYBOOK: {
-              playback.folderStartTrack = 1;
-              playback.folderEndTrack = mp3.getFolderTrackCount(playback.currentTag.folder);
-              break;
-            }
-          case VSTORY: {}
-          case VALBUM: {}
-          case VPARTY: {
-              playback.folderStartTrack = playback.currentTag.multiPurposeData1;
-              playback.folderEndTrack = playback.currentTag.multiPurposeData2;
-              break;
-            }
-          default: {
-              break;
-            }
+        switch (playback.currentTag.mode)
+        {
+        case STORY:
+        {
+        }
+        case ALBUM:
+        {
+        }
+        case PARTY:
+        {
+        }
+        case SINGLE:
+        {
+        }
+        case STORYBOOK:
+        {
+          playback.folderStartTrack = 1;
+          playback.folderEndTrack = mp3.getFolderTrackCount(playback.currentTag.folder);
+          break;
+        }
+        case VSTORY:
+        {
+        }
+        case VALBUM:
+        {
+        }
+        case VPARTY:
+        {
+          playback.folderStartTrack = playback.currentTag.multiPurposeData1;
+          playback.folderEndTrack = playback.currentTag.multiPurposeData2;
+          break;
+        }
+        default:
+        {
+          break;
+        }
         }
 
         // prepare playlist for playback
-        for (uint8_t i = 0; i < 255; i++) playback.playList[i] = playback.folderStartTrack + i <= playback.folderEndTrack ? playback.folderStartTrack + i : 0;
+        for (uint8_t i = 0; i < 255; i++)
+          playback.playList[i] = playback.folderStartTrack + i <= playback.folderEndTrack ? playback.folderStartTrack + i : 0;
         playback.playListItemCount = playback.folderEndTrack - playback.folderStartTrack + 1;
 
         // prepare first track for playback
-        switch (playback.currentTag.mode) {
-          case VSTORY: {}
-          case STORY: {
-              playback.playListItem = random(1, playback.playListItemCount + 1);
-              break;
-            }
-          case VALBUM: {}
-          case ALBUM: {
-              playback.playListItem = 1;
-              break;
-            }
-          case VPARTY: {}
-          case PARTY: {
-              playback.playListItem = 1;
-              // shuffle playlist
-              for (uint8_t i = 0; i < playback.playListItemCount; i++) {
-                uint8_t j = random(0, playback.playListItemCount);
-                uint8_t temp = playback.playList[i];
-                playback.playList[i] = playback.playList[j];
-                playback.playList[j] = temp;
-              }
-              break;
-            }
-          case SINGLE: {
-              playback.playListItem = playback.currentTag.multiPurposeData1;
-              break;
-            }
-          case STORYBOOK: {
-              uint8_t storedTrack = EEPROM.read(playback.currentTag.folder);
-              // don't resume from eeprom, play from the beginning
-              if (storedTrack == 0 || storedTrack > playback.folderEndTrack) playback.playListItem = 1;
-              // resume from eeprom
-              else {
-                playback.playListItem = storedTrack;
-                Serial.print(F("resume "));
-              }
-              break;
-            }
-          default: {
-              break;
-            }
+        switch (playback.currentTag.mode)
+        {
+        case VSTORY:
+        {
+        }
+        case STORY:
+        {
+          playback.playListItem = random(1, playback.playListItemCount + 1);
+          break;
+        }
+        case VALBUM:
+        {
+        }
+        case ALBUM:
+        {
+          playback.playListItem = 1;
+          break;
+        }
+        case VPARTY:
+        {
+        }
+        case PARTY:
+        {
+          playback.playListItem = 1;
+          // shuffle playlist
+          for (uint8_t i = 0; i < playback.playListItemCount; i++)
+          {
+            uint8_t j = random(0, playback.playListItemCount);
+            uint8_t temp = playback.playList[i];
+            playback.playList[i] = playback.playList[j];
+            playback.playList[j] = temp;
+          }
+          break;
+        }
+        case SINGLE:
+        {
+          playback.playListItem = playback.currentTag.multiPurposeData1;
+          break;
+        }
+        case STORYBOOK:
+        {
+          uint8_t storedTrack = EEPROM.read(playback.currentTag.folder);
+          // don't resume from eeprom, play from the beginning
+          if (storedTrack == 0 || storedTrack > playback.folderEndTrack)
+            playback.playListItem = 1;
+          // resume from eeprom
+          else
+          {
+            playback.playListItem = storedTrack;
+            Serial.print(F("resume "));
+          }
+          break;
+        }
+        default:
+        {
+          break;
+        }
         }
 
         playback.isFresh = true;
@@ -813,7 +979,8 @@ void loop() {
 
       // #####################################################################################
       // # nfc tag does not have our magic cookie on it, start setup to configure this nfc tag
-      else if (playback.currentTag.cookie == 0) {
+      else if (playback.currentTag.cookie == 0)
+      {
         nfcTagStruct newTag;
         playback.playListMode = false;
 
@@ -823,36 +990,43 @@ void loop() {
         switchButtonConfiguration(CONFIG);
         shutdownTimer(STOP);
 
-        while (true) {
+        while (true)
+        {
           Serial.println(F("setup tag"));
           Serial.println(F("folder"));
           newTag.folder = prompt(99, 801, 0, 0, 0, true, false);
-          if (newTag.folder == 0) {
+          if (newTag.folder == 0)
+          {
             mp3.playMp3FolderTrack(807);
             waitPlaybackToFinish(255, 0, 0, 100);
             break;
           }
           Serial.println(F("mode"));
           newTag.mode = prompt(8, 820, 820, 0, 0, false, false);
-          if (newTag.mode == 0) {
+          if (newTag.mode == 0)
+          {
             mp3.playMp3FolderTrack(807);
             waitPlaybackToFinish(255, 0, 0, 100);
             break;
           }
-          else if (newTag.mode == SINGLE) {
+          else if (newTag.mode == SINGLE)
+          {
             Serial.println(F("singletrack"));
             newTag.multiPurposeData1 = prompt(mp3.getFolderTrackCount(newTag.folder), 802, 0, 0, newTag.folder, true, false);
             newTag.multiPurposeData2 = 0;
-            if (newTag.multiPurposeData1 == 0) {
+            if (newTag.multiPurposeData1 == 0)
+            {
               mp3.playMp3FolderTrack(807);
               waitPlaybackToFinish(255, 0, 0, 100);
               break;
             }
           }
-          else if (newTag.mode == VSTORY || newTag.mode == VALBUM || newTag.mode == VPARTY) {
+          else if (newTag.mode == VSTORY || newTag.mode == VALBUM || newTag.mode == VPARTY)
+          {
             Serial.println(F("starttrack"));
             newTag.multiPurposeData1 = prompt(mp3.getFolderTrackCount(newTag.folder), 803, 0, 0, newTag.folder, true, false);
-            if (newTag.multiPurposeData1 == 0) {
+            if (newTag.multiPurposeData1 == 0)
+            {
               mp3.playMp3FolderTrack(807);
               waitPlaybackToFinish(255, 0, 0, 100);
               break;
@@ -860,30 +1034,34 @@ void loop() {
             Serial.println(F("endtrack"));
             newTag.multiPurposeData2 = prompt(mp3.getFolderTrackCount(newTag.folder), 804, 0, newTag.multiPurposeData1, newTag.folder, true, false);
             newTag.multiPurposeData2 = max(newTag.multiPurposeData1, newTag.multiPurposeData2);
-            if (newTag.multiPurposeData2 == 0) {
+            if (newTag.multiPurposeData2 == 0)
+            {
               mp3.playMp3FolderTrack(807);
               waitPlaybackToFinish(255, 0, 0, 100);
               break;
             }
           }
-          uint8_t bytesToWrite[] = {magicCookieHex[0],                 // 1st byte of magic cookie (by default 0x13)
-                                    magicCookieHex[1],                 // 2nd byte of magic cookie (by default 0x37)
-                                    magicCookieHex[2],                 // 3rd byte of magic cookie (by default 0xb3)
-                                    magicCookieHex[3],                 // 4th byte of magic cookie (by default 0x47)
-                                    0x01,                              // version 1
-                                    newTag.folder,                     // the folder selected by the user
-                                    newTag.mode,                       // the playback mode selected by the user
-                                    newTag.multiPurposeData1,          // multi purpose data (ie. single track for mode 4 and start of vfolder)
-                                    newTag.multiPurposeData2,          // multi purpose data (ie. end of vfolder, depending on mode)
-                                    0x00, 0x00, 0x00,                  // reserved for future use
-                                    0x00, 0x00, 0x00, 0x00             // reserved for future use
-                                   };
+          uint8_t bytesToWrite[] = {
+              magicCookieHex[0],        // 1st byte of magic cookie (by default 0x13)
+              magicCookieHex[1],        // 2nd byte of magic cookie (by default 0x37)
+              magicCookieHex[2],        // 3rd byte of magic cookie (by default 0xb3)
+              magicCookieHex[3],        // 4th byte of magic cookie (by default 0x47)
+              0x01,                     // version 1
+              newTag.folder,            // the folder selected by the user
+              newTag.mode,              // the playback mode selected by the user
+              newTag.multiPurposeData1, // multi purpose data (ie. single track for mode 4 and start of vfolder)
+              newTag.multiPurposeData2, // multi purpose data (ie. end of vfolder, depending on mode)
+              0x00, 0x00, 0x00,         // reserved for future use
+              0x00, 0x00, 0x00, 0x00    // reserved for future use
+          };
           uint8_t writeNfcTagStatus = writeNfcTagData(bytesToWrite, sizeof(bytesToWrite));
-          if (writeNfcTagStatus == 1) {
+          if (writeNfcTagStatus == 1)
+          {
             mp3.playMp3FolderTrack(805);
             waitPlaybackToFinish(0, 255, 0, 100);
           }
-          else {
+          else
+          {
             mp3.playMp3FolderTrack(806);
             waitPlaybackToFinish(255, 0, 0, 100);
           }
@@ -911,14 +1089,17 @@ void loop() {
   // ##################################################################################
   // # handle button and ir remote events during playback or while waiting for nfc tags
   // ir remote center: toggle box lock
-  if (inputEvent == IRC) {
-    if ((playback.isLocked = !playback.isLocked)) {
+  if (inputEvent == IRC)
+  {
+    if ((playback.isLocked = !playback.isLocked))
+    {
       Serial.println(F("lock"));
 #if defined STATUSLED ^ defined STATUSLEDRGB
       statusLedUpdate(BURST4, 255, 0, 0, 0);
 #endif
     }
-    else {
+    else
+    {
       Serial.println(F("unlock"));
 #if defined STATUSLED ^ defined STATUSLEDRGB
       statusLedUpdate(BURST8, 0, 255, 0, 0);
@@ -926,21 +1107,26 @@ void loop() {
     }
   }
   // button 0 (middle) press or ir remote play+pause: toggle playback
-  else if ((inputEvent == B0P && !playback.isLocked) || inputEvent == IRP) {
-    if (playback.isPlaying) {
+  else if ((inputEvent == B0P && !playback.isLocked) || inputEvent == IRP)
+  {
+    if (playback.isPlaying)
+    {
       switchButtonConfiguration(PAUSE);
       shutdownTimer(START);
       Serial.println(F("pause"));
       mp3.pause();
       // if the current playback mode is story book mode: store the current progress
-      if (playback.currentTag.mode == STORYBOOK) {
+      if (playback.currentTag.mode == STORYBOOK)
+      {
         Serial.print(F("save "));
         printModeFolderTrack(true);
         EEPROM.update(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
       }
     }
-    else {
-      if (playback.playListMode) {
+    else
+    {
+      if (playback.playListMode)
+      {
         switchButtonConfiguration(PLAY);
         shutdownTimer(STOP);
         Serial.println(F("play"));
@@ -949,47 +1135,62 @@ void loop() {
     }
   }
   // button 1 (right) press or ir remote up while playing: increase volume
-  else if (((inputEvent == B1P && !playback.isLocked) || inputEvent == IRU) && playback.isPlaying) {
-    if (playback.mp3CurrentVolume < preference.mp3MaxVolume) {
+  else if (((inputEvent == B1P && !playback.isLocked) || inputEvent == IRU) && playback.isPlaying)
+  {
+#ifndef NOBTNVOL
+    if (playback.mp3CurrentVolume < preference.mp3MaxVolume)
+    {
       mp3.setVolume(++playback.mp3CurrentVolume);
       Serial.print(F("volume "));
       Serial.println(playback.mp3CurrentVolume);
     }
 #if defined STATUSLED
-    else statusLedUpdate(BURST2, 255, 0, 0, 0);
+    else
+      statusLedUpdate(BURST2, 255, 0, 0, 0);
+#endif
 #endif
   }
   // button 2 (left) press or ir remote down while playing: decrease volume
-  else if (((inputEvent == B2P && !playback.isLocked) || inputEvent == IRD) && playback.isPlaying) {
-    if (playback.mp3CurrentVolume > 1) {
+  else if (((inputEvent == B2P && !playback.isLocked) || inputEvent == IRD) && playback.isPlaying)
+  {
+#ifndef NOBTNVOL
+    if (playback.mp3CurrentVolume > 1)
+    {
       mp3.setVolume(--playback.mp3CurrentVolume);
       Serial.print(F("volume "));
       Serial.println(playback.mp3CurrentVolume);
     }
 #if defined STATUSLED
-    else statusLedUpdate(BURST2, 255, 0, 0, 0);
+    else
+      statusLedUpdate(BURST2, 255, 0, 0, 0);
+#endif
 #endif
   }
   // button 1 (right) hold for 2 sec or button 5 press or ir remote right, only during (v)album, (v)party and story book mode while playing: next track
-  else if ((((inputEvent == B1H || inputEvent == B4P) && !playback.isLocked) || inputEvent == IRR) && (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying) {
+  else if ((((inputEvent == B1H || inputEvent == B4P) && !playback.isLocked) || inputEvent == IRR) && (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying)
+  {
     Serial.println(F("next"));
     playNextTrack(0, true, true);
   }
   // button 2 (left) hold for 2 sec or button 4 press or ir remote left, only during (v)album, (v)party and story book mode while playing: previous track
-  else if ((((inputEvent == B2H || inputEvent == B3P) && !playback.isLocked) || inputEvent == IRL) && (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying) {
+  else if ((((inputEvent == B2H || inputEvent == B3P) && !playback.isLocked) || inputEvent == IRL) && (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying)
+  {
     Serial.println(F("prev"));
     playNextTrack(0, false, true);
   }
   // button 0 (middle) hold for 5 sec or ir remote menu, only during (v)story, (v)album, (v)party and single mode while playing: toggle single track repeat
-  else if (((inputEvent == B0H && !playback.isLocked) || inputEvent == IRM) && (playback.currentTag.mode == STORY || playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == SINGLE || playback.currentTag.mode == VSTORY || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying) {
+  else if (((inputEvent == B0H && !playback.isLocked) || inputEvent == IRM) && (playback.currentTag.mode == STORY || playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == SINGLE || playback.currentTag.mode == VSTORY || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) && playback.isPlaying)
+  {
     Serial.print(F("repeat "));
-    if ((playback.isRepeat = !playback.isRepeat)) {
+    if ((playback.isRepeat = !playback.isRepeat))
+    {
       Serial.println(F("on"));
 #if defined STATUSLED ^ defined STATUSLEDRGB
       statusLedUpdate(BURST4, 255, 255, 255, 0);
 #endif
     }
-    else {
+    else
+    {
       Serial.println(F("off"));
 #if defined STATUSLED ^ defined STATUSLEDRGB
       statusLedUpdate(BURST8, 255, 255, 255, 0);
@@ -997,7 +1198,8 @@ void loop() {
     }
   }
   // button 0 (middle) hold for 5 sec or ir remote menu, only during story book mode while playing: reset progress
-  else if (((inputEvent == B0H && !playback.isLocked) || inputEvent == IRM) && playback.currentTag.mode == STORYBOOK && playback.isPlaying) {
+  else if (((inputEvent == B0H && !playback.isLocked) || inputEvent == IRM) && playback.currentTag.mode == STORYBOOK && playback.isPlaying)
+  {
     playback.playListItem = 1;
     Serial.print(F("reset "));
     printModeFolderTrack(true);
@@ -1008,7 +1210,8 @@ void loop() {
 #endif
   }
   // button 0 (middle) hold for 5 sec or ir remote menu while not playing: parents menu
-  else if (((inputEvent == B0H && !playback.isLocked) || inputEvent == IRM) && !playback.isPlaying) {
+  else if (((inputEvent == B0H && !playback.isLocked) || inputEvent == IRM) && !playback.isPlaying)
+  {
     parentsMenu();
     Serial.println(F("ready"));
   }
@@ -1023,14 +1226,19 @@ void loop() {
 // ################################################################################################################################################################
 
 // checks all input sources and populates the global inputEvent variable
-void checkForInput() {
+void checkForInput()
+{
   // clear inputEvent
   inputEvent = NOACTION;
 
   // check all buttons
   button0.check();
+#if not defined ROTARY
   button1.check();
   button2.check();
+#else
+  checkRotaryEncoder();
+#endif
 #if defined FIVEBUTTONS
   button3.check();
   button4.check();
@@ -1042,15 +1250,20 @@ void checkForInput() {
   static uint64_t irRemoteOldMillis;
 
   // poll ir receiver, has precedence over (overwrites) physical buttons
-  if (irReceiver.decode(&irReading)) {
+  if (irReceiver.decode(&irReading))
+  {
     // on NEC encoding 0xFFFFFFFF means the button is held down, we ignore this
-    if (!(irReading.decode_type == NEC && irReading.value == 0xFFFFFFFF)) {
+    if (!(irReading.decode_type == NEC && irReading.value == 0xFFFFFFFF))
+    {
       // convert irReading.value from 32bit to 16bit
       irRemoteCode = (irReading.value & 0xFFFF);
-      for (uint8_t i = 0; i < irRemoteCount; i++) {
-        for (uint8_t j = 0; j < irRemoteCodeCount; j++) {
+      for (uint8_t i = 0; i < irRemoteCount; i++)
+      {
+        for (uint8_t j = 0; j < irRemoteCodeCount; j++)
+        {
           //if we have a match, temporally populate irRemoteEvent and break
-          if (irRemoteCode == irRemoteCodes[i][j] || irRemoteCode == preference.irRemoteUserCodes[j]) {
+          if (irRemoteCode == irRemoteCodes[i][j] || irRemoteCode == preference.irRemoteUserCodes[j])
+          {
             // 16 is used as an offset in the button action enum list - 17 is the first ir action
             irRemoteEvent = 16 + j;
             break;
@@ -1058,7 +1271,8 @@ void checkForInput() {
         }
         // if the inner loop had a match, populate inputEvent and break
         // ir remote key presses are debounced by 250ms
-        if (irRemoteEvent != 0 && millis() - irRemoteOldMillis >= 250) {
+        if (irRemoteEvent != 0 && millis() - irRemoteOldMillis >= 250)
+        {
           irRemoteOldMillis = millis();
           inputEvent = irRemoteEvent;
           break;
@@ -1068,198 +1282,309 @@ void checkForInput() {
     irReceiver.resume();
   }
 #endif
+
+#if defined ANALOGVOL
+  updateAnalogVol();
+#endif
 }
 
 // translates the various button events into enums
-void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* buttonState */) {
-  switch (button->getId()) {
-    // button 0 (middle)
-    case 0: {
-        switch (eventType) {
-          case AceButton::kEventClicked: {
-              inputEvent = B0P;
-              break;
-            }
-          case AceButton::kEventLongPressed: {
-              inputEvent = B0H;
-              break;
-            }
-          case AceButton::kEventDoubleClicked: {
-              inputEvent = B0D;
-              break;
-            }
-          default: {
-              break;
-            }
-        }
-        break;
-      }
-    // button 1 (right)
-    case 1: {
-        switch (eventType) {
-          case AceButton::kEventClicked: {
-              inputEvent = B1P;
-              break;
-            }
-          case AceButton::kEventLongPressed: {
-              inputEvent = B1H;
-              break;
-            }
-          default: {
-              break;
-            }
-        }
-        break;
-      }
-    // button 2 (left)
-    case 2: {
-        switch (eventType) {
-          case AceButton::kEventClicked: {
-              inputEvent = B2P;
-              break;
-            }
-          case AceButton::kEventLongPressed: {
-              inputEvent = B2H;
-              break;
-            }
-          default: {
-              break;
-            }
-        }
-        break;
-      }
-#if defined FIVEBUTTONS
-    // optional 4th button
-    case 3: {
-        switch (eventType) {
-          case AceButton::kEventClicked: {
-              inputEvent = B3P;
-              break;
-            }
-          default: {
-              break;
-            }
-        }
-        break;
-      }
-    // optional 5th button
-    case 4: {
-        switch (eventType) {
-          case AceButton::kEventClicked: {
-              inputEvent = B4P;
-              break;
-            }
-          default: {
-              break;
-            }
-        }
-        break;
-      }
+void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* buttonState */)
+{
+  switch (button->getId())
+  {
+  // button 0 (middle)
+  case 0:
+  {
+    switch (eventType)
+    {
+    case AceButton::kEventClicked:
+    {
+      inputEvent = B0P;
+      break;
+    }
+    case AceButton::kEventLongPressed:
+    {
+      inputEvent = B0H;
+      break;
+    }
+    case AceButton::kEventDoubleClicked:
+    {
+      inputEvent = B0D;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+    }
+    break;
+  }
+#if not defined ROTARY
+  // button 1 (right)
+  case 1:
+  {
+    switch (eventType)
+    {
+    case AceButton::kEventClicked:
+    {
+      inputEvent = B1P;
+      break;
+    }
+    case AceButton::kEventLongPressed:
+    {
+      inputEvent = B1H;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+    }
+    break;
+  }
+  // button 2 (left)
+  case 2:
+  {
+    switch (eventType)
+    {
+    case AceButton::kEventClicked:
+    {
+      inputEvent = B2P;
+      break;
+    }
+    case AceButton::kEventLongPressed:
+    {
+      inputEvent = B2H;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+    }
+    break;
+  }
 #endif
-    default: {
-        break;
-      }
+#if defined FIVEBUTTONS
+  // optional 4th button
+  case 3:
+  {
+    switch (eventType)
+    {
+    case AceButton::kEventClicked:
+    {
+      inputEvent = B3P;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+    }
+    break;
+  }
+  // optional 5th button
+  case 4:
+  {
+    switch (eventType)
+    {
+    case AceButton::kEventClicked:
+    {
+      inputEvent = B4P;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+    }
+    break;
+  }
+#endif
+  default:
+  {
+    break;
+  }
   }
 }
+
+#if defined ROTARY
+void checkRotaryEncoder()
+{
+  uint8_t value = digitalRead(button1Pin);
+  if (value != valRot)
+  {
+    if (digitalRead(button2Pin) != value)
+    {
+      numRot++;
+    }
+    else
+    {
+      numRot--;
+    }
+    lastRot = millis();
+  }
+  valRot = value;
+  if (numRot != 0 && millis() - lastRot > buttonClickDelay)
+  {
+    if (abs(numRot) < longRot)
+        {
+          if (numRot > 0)
+          {
+            inputEvent = B1P;
+            Serial.println(F("Short right"));
+          }
+          else
+          {
+            inputEvent = B2P;
+            Serial.println(F("Short left"));
+          }
+        }
+      else
+      {
+        if (numRot > 0)
+        {
+          inputEvent = B1H;
+          Serial.println(F("Long right"));
+        }
+        else
+        {
+          inputEvent = B2H;
+          Serial.println(F("Long left"));
+        }
+      }
+      numRot = 0;
+  }
+}
+#endif
 
 // switches button configuration dependig on the state that TonUINO is in
-void switchButtonConfiguration(uint8_t buttonMode) {
-  switch (buttonMode) {
-    case INIT: {
-        // button 0 (middle)
-        button0Config.setEventHandler(translateButtonInput);
-        button0Config.setFeature(ButtonConfig::kFeatureClick);
-        button0Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
-        button0Config.setClickDelay(buttonClickDelay);
-        button0Config.setFeature(ButtonConfig::kFeatureLongPress);
-        button0Config.setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
-        button0Config.setLongPressDelay(buttonShortLongPressDelay);
-        // button 1 (right)
-        button1Config.setEventHandler(translateButtonInput);
-        button1Config.setFeature(ButtonConfig::kFeatureClick);
-        button1Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
-        button1Config.setClickDelay(buttonClickDelay);
-#if not defined FIVEBUTTONS
-        // only enable long press on button 1 (right) when in 3 button mode
-        button1Config.setFeature(ButtonConfig::kFeatureLongPress);
-        button1Config.setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
-        button1Config.setLongPressDelay(buttonShortLongPressDelay);
+void switchButtonConfiguration(uint8_t buttonMode)
+{
+  switch (buttonMode)
+  {
+  case INIT:
+  {
+    // button 0 (middle)
+    button0Config.setEventHandler(translateButtonInput);
+    button0Config.setFeature(ButtonConfig::kFeatureClick);
+    button0Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
+    button0Config.setClickDelay(buttonClickDelay);
+    button0Config.setFeature(ButtonConfig::kFeatureLongPress);
+    button0Config.setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
+    button0Config.setLongPressDelay(buttonShortLongPressDelay);
+#if not defined ROTARY
+    // button 1 (right)
+    button1Config.setEventHandler(translateButtonInput);
+    button1Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
+    button1Config.setFeature(ButtonConfig::kFeatureClick);
+    button1Config.setClickDelay(buttonClickDelay);
 #endif
-        // button 2 (left)
-        button2Config.setEventHandler(translateButtonInput);
-        button2Config.setFeature(ButtonConfig::kFeatureClick);
-        button2Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
-        button2Config.setClickDelay(buttonClickDelay);
 #if not defined FIVEBUTTONS
-        // only enable long press on button 2 (left) when in 3 button mode
-        button2Config.setFeature(ButtonConfig::kFeatureLongPress);
-        button2Config.setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
-        button2Config.setLongPressDelay(buttonShortLongPressDelay);
+    // only enable long press on button 1 (right) when in 3 button mode
+    button1Config.setFeature(ButtonConfig::kFeatureLongPress);
+    button1Config.setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
+    button1Config.setLongPressDelay(buttonShortLongPressDelay);
+#endif
+#if not defined ROTARY
+    // button 2 (left)
+    button2Config.setEventHandler(translateButtonInput);
+    button2Config.setFeature(ButtonConfig::kFeatureClick);
+    button2Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
+    button2Config.setClickDelay(buttonClickDelay);
+#if not defined FIVEBUTTONS
+    // only enable long press on button 2 (left) when in 3 button mode
+    button2Config.setFeature(ButtonConfig::kFeatureLongPress);
+    button2Config.setFeature(ButtonConfig::kFeatureSuppressAfterLongPress);
+    button2Config.setLongPressDelay(buttonShortLongPressDelay);
+#endif
 #endif
 #if defined FIVEBUTTONS
-        // optional 4th button
-        button3Config.setEventHandler(translateButtonInput);
-        button3Config.setFeature(ButtonConfig::kFeatureClick);
-        button3Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
-        button3Config.setClickDelay(buttonClickDelay);
-        // optional 5th button
-        button4Config.setEventHandler(translateButtonInput);
-        button4Config.setFeature(ButtonConfig::kFeatureClick);
-        button4Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
-        button4Config.setClickDelay(buttonClickDelay);
+    // optional 4th button
+    button3Config.setEventHandler(translateButtonInput);
+    button3Config.setFeature(ButtonConfig::kFeatureClick);
+    button3Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
+    button3Config.setClickDelay(buttonClickDelay);
+    // optional 5th button
+    button4Config.setEventHandler(translateButtonInput);
+    button4Config.setFeature(ButtonConfig::kFeatureClick);
+    button4Config.setFeature(ButtonConfig::kFeatureSuppressAfterClick);
+    button4Config.setClickDelay(buttonClickDelay);
 #endif
-        break;
-      }
-    case PLAY: {
-        // button 0 (middle)
-        button0Config.clearFeature(ButtonConfig::kFeatureDoubleClick);
-        button0Config.clearFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
-        button0Config.clearFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
-        button0Config.setLongPressDelay(buttonLongLongPressDelay);
-        break;
-      }
-    case PAUSE: {
-        // button 0 (middle)
-        button0Config.clearFeature(ButtonConfig::kFeatureDoubleClick);
-        button0Config.clearFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
-        button0Config.clearFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
-        button0Config.setLongPressDelay(buttonLongLongPressDelay);
-        break;
-      }
-    case PIN: {
-        // button 0 (middle)
-        button0Config.clearFeature(ButtonConfig::kFeatureDoubleClick);
-        button0Config.clearFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
-        button0Config.clearFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
-        button0Config.setLongPressDelay(buttonShortLongPressDelay);
-        break;
-      }
-    case CONFIG: {
-        // button 0 (middle)
-        button0Config.setFeature(ButtonConfig::kFeatureDoubleClick);
-        button0Config.setFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
-        button0Config.setFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
-        button0Config.setLongPressDelay(buttonShortLongPressDelay);
-        break;
-      }
-    default: {
-        break;
-      }
+    break;
+  }
+  case PLAY:
+  {
+    // button 0 (middle)
+    button0Config.clearFeature(ButtonConfig::kFeatureDoubleClick);
+    button0Config.clearFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
+    button0Config.clearFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
+    button0Config.setLongPressDelay(buttonLongLongPressDelay);
+    break;
+  }
+  case PAUSE:
+  {
+    // button 0 (middle)
+    button0Config.clearFeature(ButtonConfig::kFeatureDoubleClick);
+    button0Config.clearFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
+    button0Config.clearFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
+    button0Config.setLongPressDelay(buttonLongLongPressDelay);
+    break;
+  }
+  case PIN:
+  {
+    // button 0 (middle)
+    button0Config.clearFeature(ButtonConfig::kFeatureDoubleClick);
+    button0Config.clearFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
+    button0Config.clearFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
+    button0Config.setLongPressDelay(buttonShortLongPressDelay);
+    break;
+  }
+  case CONFIG:
+  {
+    // button 0 (middle)
+    button0Config.setFeature(ButtonConfig::kFeatureDoubleClick);
+    button0Config.setFeature(ButtonConfig::kFeatureSuppressClickBeforeDoubleClick);
+    button0Config.setFeature(ButtonConfig::kFeatureSuppressAfterDoubleClick);
+    button0Config.setLongPressDelay(buttonShortLongPressDelay);
+    break;
+  }
+  default:
+  {
+    break;
+  }
   }
 }
 
+#if defined ANALOGVOL
+void updateAnalogVol()
+{
+  uint8_t volRead = analogRead(volumePin) >> 5;
+  volRead = min(volRead, preference.mp3MaxVolume);
+  if (volRead != playback.mp3CurrentVolume)
+  {
+    mp3.setVolume(playback.mp3CurrentVolume = volRead);
+  }
+}
+#endif
+
 // waits for current playing track to finish
-void waitPlaybackToFinish(uint8_t red, uint8_t green, uint8_t blue, uint16_t statusLedUpdateInterval) {
+void waitPlaybackToFinish(uint8_t red, uint8_t green, uint8_t blue, uint16_t statusLedUpdateInterval)
+{
   uint64_t waitPlaybackToStartMillis = millis();
 
   delay(500);
-  while (digitalRead(mp3BusyPin)) {
-    if (millis() - waitPlaybackToStartMillis >= 10000) break;
+  while (digitalRead(mp3BusyPin))
+  {
+    if (millis() - waitPlaybackToStartMillis >= 10000)
+      break;
 #if defined STATUSLED ^ defined STATUSLEDRGB
     statusLedUpdate(BLINK, red, green, blue, statusLedUpdateInterval);
 #endif
   }
-  while (!digitalRead(mp3BusyPin)) {
+  while (!digitalRead(mp3BusyPin))
+  {
 #if defined STATUSLED ^ defined STATUSLEDRGB
     statusLedUpdate(BLINK, red, green, blue, statusLedUpdateInterval);
 #endif
@@ -1268,7 +1593,8 @@ void waitPlaybackToFinish(uint8_t red, uint8_t green, uint8_t blue, uint16_t sta
 }
 
 // prints current mode, folder and track information
-void printModeFolderTrack(bool cr) {
+void printModeFolderTrack(bool cr)
+{
   Serial.print(playbackModeName[playback.currentTag.mode]);
   Serial.print(F("-"));
   Serial.print(playback.currentTag.folder);
@@ -1276,12 +1602,14 @@ void printModeFolderTrack(bool cr) {
   Serial.print(playback.playListItem);
   Serial.print(F("/"));
   Serial.print(playback.playListItemCount);
-  if (playback.currentTag.mode == PARTY) {
+  if (playback.currentTag.mode == PARTY)
+  {
     Serial.print(F("-("));
     Serial.print(playback.playList[playback.playListItem - 1]);
     Serial.print(F(")"));
   }
-  else if (playback.currentTag.mode == VSTORY || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) {
+  else if (playback.currentTag.mode == VSTORY || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY)
+  {
     Serial.print(F("-("));
     Serial.print(playback.folderStartTrack);
     Serial.print(F("->"));
@@ -1290,15 +1618,18 @@ void printModeFolderTrack(bool cr) {
     Serial.print(playback.playList[playback.playListItem - 1]);
     Serial.print(F(")"));
   }
-  if (cr) Serial.println();
+  if (cr)
+    Serial.println();
 }
 
 // plays next track depending on the current playback mode
-void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredManually) {
+void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredManually)
+{
   static uint16_t lastCallTrack = 0;
 
   // we only advance to a new track when in playlist mode, not during interactive prompt playback (ie. during configuration of a new nfc tag)
-  if (!playback.playListMode) return;
+  if (!playback.playListMode)
+    return;
 
   //delay 100ms to be on the safe side with the serial communication
   delay(100);
@@ -1307,13 +1638,16 @@ void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredMa
   // single mode (4): play one single track in folder
   // vstory mode (6): play one random track in virtual folder
   // there is no next track in story, single and vstory mode, stop playback
-  if (playback.currentTag.mode == STORY || playback.currentTag.mode == SINGLE || playback.currentTag.mode == VSTORY) {
-    if (playback.isRepeat) {
+  if (playback.currentTag.mode == STORY || playback.currentTag.mode == SINGLE || playback.currentTag.mode == VSTORY)
+  {
+    if (playback.isRepeat)
+    {
       lastCallTrack = 0;
       printModeFolderTrack(true);
       mp3.playFolderTrack(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
     }
-    else {
+    else
+    {
       playback.playListMode = false;
       switchButtonConfiguration(PAUSE);
       shutdownTimer(START);
@@ -1329,42 +1663,52 @@ void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredMa
   // valbum mode (7): play the complete virtual folder
   // vparty mode (8): shuffle the complete virtual folder
   // advance to the next or previous track, stop if the end of the folder is reached
-  if (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY) {
+  if (playback.currentTag.mode == ALBUM || playback.currentTag.mode == PARTY || playback.currentTag.mode == STORYBOOK || playback.currentTag.mode == VALBUM || playback.currentTag.mode == VPARTY)
+  {
 
     // **workaround for some DFPlayer mini modules that make two callbacks in a row when finishing a track**
     // reset lastCallTrack to avoid lockup when playback was just started
-    if (playback.isFresh) {
+    if (playback.isFresh)
+    {
       playback.isFresh = false;
       lastCallTrack = 0;
     }
     // check if we automatically get called with the same track number twice in a row, if yes return immediately
-    if (lastCallTrack == globalTrack && !triggeredManually) return;
-    else lastCallTrack = globalTrack;
+    if (lastCallTrack == globalTrack && !triggeredManually)
+      return;
+    else
+      lastCallTrack = globalTrack;
 
     // play next track?
-    if (directionForward) {
+    if (directionForward)
+    {
       // single track repeat is on, repeat current track
-      if (playback.isRepeat && !triggeredManually) {
+      if (playback.isRepeat && !triggeredManually)
+      {
         lastCallTrack = 0;
         printModeFolderTrack(true);
         mp3.playFolderTrack(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
       }
       // there are more tracks after the current one, play next track
-      else if (playback.playListItem < playback.playListItemCount) {
+      else if (playback.playListItem < playback.playListItemCount)
+      {
         playback.playListItem++;
         printModeFolderTrack(true);
         mp3.playFolderTrack(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
       }
       // there are no more tracks after the current one
-      else {
+      else
+      {
         // if not triggered manually, stop playback (and reset progress)
-        if (!triggeredManually) {
+        if (!triggeredManually)
+        {
           playback.playListMode = false;
           switchButtonConfiguration(PAUSE);
           shutdownTimer(START);
           Serial.print(playbackModeName[playback.currentTag.mode]);
           Serial.print(F("-stop"));
-          if (playback.currentTag.mode == STORYBOOK) {
+          if (playback.currentTag.mode == STORYBOOK)
+          {
             Serial.print(F("-reset"));
             EEPROM.update(playback.currentTag.folder, 0);
           }
@@ -1372,27 +1716,32 @@ void playNextTrack(uint16_t globalTrack, bool directionForward, bool triggeredMa
           mp3.stop();
         }
 #if defined STATUSLED
-        else statusLedUpdate(BURST2, 255, 0, 0, 0);
+        else
+          statusLedUpdate(BURST2, 255, 0, 0, 0);
 #endif
       }
     }
     // play previous track?
-    else {
+    else
+    {
       // there are more tracks before the current one, play the previous track
-      if (playback.playListItem > 1) {
+      if (playback.playListItem > 1)
+      {
         playback.playListItem--;
         printModeFolderTrack(true);
         mp3.playFolderTrack(playback.currentTag.folder, playback.playList[playback.playListItem - 1]);
       }
 #if defined STATUSLED
-      else statusLedUpdate(BURST2, 255, 0, 0, 0);
+      else
+        statusLedUpdate(BURST2, 255, 0, 0, 0);
 #endif
     }
   }
 }
 
 // reads data from nfc tag
-uint8_t readNfcTagData() {
+uint8_t readNfcTagData()
+{
   uint8_t nfcTagReadBuffer[16] = {};
   uint8_t piccReadBuffer[18] = {};
   uint8_t piccReadBufferSize = sizeof(piccReadBuffer);
@@ -1401,52 +1750,66 @@ uint8_t readNfcTagData() {
   MFRC522::PICC_Type piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
 
   // decide which code path to take depending on picc type
-  if (piccType == MFRC522::PICC_TYPE_MIFARE_MINI || piccType ==  MFRC522::PICC_TYPE_MIFARE_1K || piccType == MFRC522::PICC_TYPE_MIFARE_4K) {
+  if (piccType == MFRC522::PICC_TYPE_MIFARE_MINI || piccType == MFRC522::PICC_TYPE_MIFARE_1K || piccType == MFRC522::PICC_TYPE_MIFARE_4K)
+  {
     uint8_t classicBlock = 4;
     uint8_t classicTrailerBlock = 7;
     MFRC522::MIFARE_Key classicKey;
-    for (uint8_t i = 0; i < 6; i++) classicKey.keyByte[i] = 0xFF;
+    for (uint8_t i = 0; i < 6; i++)
+      classicKey.keyByte[i] = 0xFF;
 
     // check if we can authenticate with classicKey
     piccStatus = (MFRC522::StatusCode)mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, classicTrailerBlock, &classicKey, &mfrc522.uid);
-    if (piccStatus == MFRC522::STATUS_OK) {
+    if (piccStatus == MFRC522::STATUS_OK)
+    {
       // read 16 bytes from nfc tag (by default sector 1 / block 4)
       piccStatus = (MFRC522::StatusCode)mfrc522.MIFARE_Read(classicBlock, piccReadBuffer, &piccReadBufferSize);
-      if (piccStatus == MFRC522::STATUS_OK) {
+      if (piccStatus == MFRC522::STATUS_OK)
+      {
         nfcTagReadSuccess = true;
         memcpy(nfcTagReadBuffer, piccReadBuffer, sizeof(nfcTagReadBuffer));
       }
-      else Serial.println(mfrc522.GetStatusCodeName(piccStatus));
+      else
+        Serial.println(mfrc522.GetStatusCodeName(piccStatus));
     }
-    else Serial.println(mfrc522.GetStatusCodeName(piccStatus));
+    else
+      Serial.println(mfrc522.GetStatusCodeName(piccStatus));
   }
-  else if (piccType == MFRC522::PICC_TYPE_MIFARE_UL) {
+  else if (piccType == MFRC522::PICC_TYPE_MIFARE_UL)
+  {
     uint8_t ultralightStartPage = 8;
     uint8_t ultralightACK[2] = {};
     MFRC522::MIFARE_Key ultralightKey;
-    for (uint8_t i = 0; i < 4; i++) ultralightKey.keyByte[i] = 0xFF;
+    for (uint8_t i = 0; i < 4; i++)
+      ultralightKey.keyByte[i] = 0xFF;
 
     // check if we can authenticate with ultralightKey
     piccStatus = (MFRC522::StatusCode)mfrc522.PCD_NTAG216_AUTH(ultralightKey.keyByte, ultralightACK);
-    if (piccStatus == MFRC522::STATUS_OK) {
+    if (piccStatus == MFRC522::STATUS_OK)
+    {
       // read 16 bytes from nfc tag (by default pages 8-11)
-      for (uint8_t ultralightPage = ultralightStartPage; ultralightPage < ultralightStartPage + 4; ultralightPage++) {
+      for (uint8_t ultralightPage = ultralightStartPage; ultralightPage < ultralightStartPage + 4; ultralightPage++)
+      {
         piccStatus = (MFRC522::StatusCode)mfrc522.MIFARE_Read(ultralightPage, piccReadBuffer, &piccReadBufferSize);
-        if (piccStatus == MFRC522::STATUS_OK) {
+        if (piccStatus == MFRC522::STATUS_OK)
+        {
           nfcTagReadSuccess = true;
           memcpy(nfcTagReadBuffer + ((ultralightPage * 4) - (ultralightStartPage * 4)), piccReadBuffer, 4);
         }
-        else {
+        else
+        {
           nfcTagReadSuccess = false;
           Serial.println(mfrc522.GetStatusCodeName(piccStatus));
           break;
         }
       }
     }
-    else Serial.println(mfrc522.GetStatusCodeName(piccStatus));
+    else
+      Serial.println(mfrc522.GetStatusCodeName(piccStatus));
   }
   // picc type is not supported
-  else {
+  else
+  {
     mfrc522.PICC_HaltA();
     mfrc522.PCD_StopCrypto1();
     return 0;
@@ -1456,20 +1819,22 @@ uint8_t readNfcTagData() {
   Serial.print(nfcStatusMessage[0]);
   printNfcTagType(piccType);
   // read was successfull
-  if (nfcTagReadSuccess) {
+  if (nfcTagReadSuccess)
+  {
     // log data to the console
     Serial.print(nfcStatusMessage[3]);
     printNfcTagData(nfcTagReadBuffer, sizeof(nfcTagReadBuffer), true);
 
     // convert 4 byte magic cookie to 32bit decimal for easier handling
     uint32_t tempMagicCookie = 0;
-    tempMagicCookie  = (uint32_t)nfcTagReadBuffer[0] << 24;
+    tempMagicCookie = (uint32_t)nfcTagReadBuffer[0] << 24;
     tempMagicCookie += (uint32_t)nfcTagReadBuffer[1] << 16;
     tempMagicCookie += (uint32_t)nfcTagReadBuffer[2] << 8;
     tempMagicCookie += (uint32_t)nfcTagReadBuffer[3];
 
     // if cookie is not blank, update ncfTag object with data read from nfc tag
-    if (tempMagicCookie != 0) {
+    if (tempMagicCookie != 0)
+    {
       playback.currentTag.cookie = tempMagicCookie;
       playback.currentTag.version = nfcTagReadBuffer[4];
       playback.currentTag.folder = nfcTagReadBuffer[5];
@@ -1480,7 +1845,8 @@ uint8_t readNfcTagData() {
       mfrc522.PCD_StopCrypto1();
     }
     // if magic cookie is blank, clear ncfTag object
-    else {
+    else
+    {
       playback.currentTag.cookie = 0;
       playback.currentTag.version = 0;
       playback.currentTag.folder = 0;
@@ -1491,7 +1857,8 @@ uint8_t readNfcTagData() {
     return 1;
   }
   // read was not successfull
-  else {
+  else
+  {
     Serial.println(nfcStatusMessage[4]);
     mfrc522.PICC_HaltA();
     mfrc522.PCD_StopCrypto1();
@@ -1500,55 +1867,70 @@ uint8_t readNfcTagData() {
 }
 
 // writes data to nfc tag
-uint8_t writeNfcTagData(uint8_t nfcTagWriteBuffer[], uint8_t nfcTagWriteBufferSize) {
+uint8_t writeNfcTagData(uint8_t nfcTagWriteBuffer[], uint8_t nfcTagWriteBufferSize)
+{
   uint8_t piccWriteBuffer[16] = {};
   bool nfcTagWriteSuccess = false;
   MFRC522::StatusCode piccStatus;
   MFRC522::PICC_Type piccType = mfrc522.PICC_GetType(mfrc522.uid.sak);
 
   // decide which code path to take depending on picc type
-  if (piccType == MFRC522::PICC_TYPE_MIFARE_MINI || piccType ==  MFRC522::PICC_TYPE_MIFARE_1K || piccType == MFRC522::PICC_TYPE_MIFARE_4K) {
+  if (piccType == MFRC522::PICC_TYPE_MIFARE_MINI || piccType == MFRC522::PICC_TYPE_MIFARE_1K || piccType == MFRC522::PICC_TYPE_MIFARE_4K)
+  {
     uint8_t classicBlock = 4;
     uint8_t classicTrailerBlock = 7;
     MFRC522::MIFARE_Key classicKey;
-    for (uint8_t i = 0; i < 6; i++) classicKey.keyByte[i] = 0xFF;
+    for (uint8_t i = 0; i < 6; i++)
+      classicKey.keyByte[i] = 0xFF;
 
     // check if we can authenticate with classicKey
     piccStatus = (MFRC522::StatusCode)mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, classicTrailerBlock, &classicKey, &mfrc522.uid);
-    if (piccStatus == MFRC522::STATUS_OK) {
+    if (piccStatus == MFRC522::STATUS_OK)
+    {
       // write 16 bytes to nfc tag (by default sector 1 / block 4)
       memcpy(piccWriteBuffer, nfcTagWriteBuffer, sizeof(piccWriteBuffer));
       piccStatus = (MFRC522::StatusCode)mfrc522.MIFARE_Write(classicBlock, piccWriteBuffer, sizeof(piccWriteBuffer));
-      if (piccStatus == MFRC522::STATUS_OK) nfcTagWriteSuccess = true;
-      else Serial.println(mfrc522.GetStatusCodeName(piccStatus));
+      if (piccStatus == MFRC522::STATUS_OK)
+        nfcTagWriteSuccess = true;
+      else
+        Serial.println(mfrc522.GetStatusCodeName(piccStatus));
     }
-    else Serial.println(mfrc522.GetStatusCodeName(piccStatus));
+    else
+      Serial.println(mfrc522.GetStatusCodeName(piccStatus));
   }
-  else if (piccType == MFRC522::PICC_TYPE_MIFARE_UL) {
+  else if (piccType == MFRC522::PICC_TYPE_MIFARE_UL)
+  {
     uint8_t ultralightStartPage = 8;
     uint8_t ultralightACK[2] = {};
     MFRC522::MIFARE_Key ultralightKey;
-    for (uint8_t i = 0; i < 4; i++) ultralightKey.keyByte[i] = 0xFF;
+    for (uint8_t i = 0; i < 4; i++)
+      ultralightKey.keyByte[i] = 0xFF;
 
     // check if we can authenticate with ultralightKey
     piccStatus = (MFRC522::StatusCode)mfrc522.PCD_NTAG216_AUTH(ultralightKey.keyByte, ultralightACK);
-    if (piccStatus == MFRC522::STATUS_OK) {
+    if (piccStatus == MFRC522::STATUS_OK)
+    {
       // write 16 bytes to nfc tag (by default pages 8-11)
-      for (uint8_t ultralightPage = ultralightStartPage; ultralightPage < ultralightStartPage + 4; ultralightPage++) {
+      for (uint8_t ultralightPage = ultralightStartPage; ultralightPage < ultralightStartPage + 4; ultralightPage++)
+      {
         memcpy(piccWriteBuffer, nfcTagWriteBuffer + ((ultralightPage * 4) - (ultralightStartPage * 4)), 4);
         piccStatus = (MFRC522::StatusCode)mfrc522.MIFARE_Write(ultralightPage, piccWriteBuffer, sizeof(piccWriteBuffer));
-        if (piccStatus == MFRC522::STATUS_OK) nfcTagWriteSuccess = true;
-        else {
+        if (piccStatus == MFRC522::STATUS_OK)
+          nfcTagWriteSuccess = true;
+        else
+        {
           nfcTagWriteSuccess = false;
           Serial.println(mfrc522.GetStatusCodeName(piccStatus));
           break;
         }
       }
     }
-    else Serial.println(mfrc522.GetStatusCodeName(piccStatus));
+    else
+      Serial.println(mfrc522.GetStatusCodeName(piccStatus));
   }
   // picc type is not supported
-  else {
+  else
+  {
     mfrc522.PICC_HaltA();
     mfrc522.PCD_StopCrypto1();
     return 0;
@@ -1558,7 +1940,8 @@ uint8_t writeNfcTagData(uint8_t nfcTagWriteBuffer[], uint8_t nfcTagWriteBufferSi
   Serial.print(nfcStatusMessage[0]);
   printNfcTagType(piccType);
   // write was successfull
-  if (nfcTagWriteSuccess) {
+  if (nfcTagWriteSuccess)
+  {
     // log data to the console
     Serial.print(nfcStatusMessage[3]);
     printNfcTagData(nfcTagWriteBuffer, nfcTagWriteBufferSize, true);
@@ -1567,7 +1950,8 @@ uint8_t writeNfcTagData(uint8_t nfcTagWriteBuffer[], uint8_t nfcTagWriteBufferSi
     return 1;
   }
   // write was not successfull
-  else {
+  else
+  {
     Serial.println(nfcStatusMessage[4]);
     mfrc522.PICC_HaltA();
     mfrc522.PCD_StopCrypto1();
@@ -1576,222 +1960,290 @@ uint8_t writeNfcTagData(uint8_t nfcTagWriteBuffer[], uint8_t nfcTagWriteBufferSi
 }
 
 // prints nfc tag data
-void printNfcTagData(uint8_t dataBuffer[], uint8_t dataBufferSize, bool cr) {
-  for (uint8_t i = 0; i < dataBufferSize; i++) {
+void printNfcTagData(uint8_t dataBuffer[], uint8_t dataBufferSize, bool cr)
+{
+  for (uint8_t i = 0; i < dataBufferSize; i++)
+  {
     Serial.print(dataBuffer[i] < 0x10 ? " 0" : " ");
     Serial.print(dataBuffer[i], HEX);
   }
-  if (cr) Serial.println();
+  if (cr)
+    Serial.println();
 }
 
 // prints nfc tag type
-void printNfcTagType(MFRC522::PICC_Type nfcTagType) {
-  switch (nfcTagType) {
-    case MFRC522::PICC_TYPE_MIFARE_MINI: {}
-    case MFRC522::PICC_TYPE_MIFARE_1K: {}
-    case MFRC522::PICC_TYPE_MIFARE_4K: {
-        Serial.print(F("cl"));
-        break;
-      }
-    case MFRC522::PICC_TYPE_MIFARE_UL: {
-        Serial.print(F("ul|nt"));
-        break;
-      }
-    default: {
-        Serial.print(F("??"));
-        break;
-      }
+void printNfcTagType(MFRC522::PICC_Type nfcTagType)
+{
+  switch (nfcTagType)
+  {
+  case MFRC522::PICC_TYPE_MIFARE_MINI:
+  {
+  }
+  case MFRC522::PICC_TYPE_MIFARE_1K:
+  {
+  }
+  case MFRC522::PICC_TYPE_MIFARE_4K:
+  {
+    Serial.print(F("cl"));
+    break;
+  }
+  case MFRC522::PICC_TYPE_MIFARE_UL:
+  {
+    Serial.print(F("ul|nt"));
+    break;
+  }
+  default:
+  {
+    Serial.print(F("??"));
+    break;
+  }
   }
   Serial.print(nfcStatusMessage[0]);
 }
 
 // starts, stops and checks the shutdown timer
-void shutdownTimer(uint8_t timerAction) {
+void shutdownTimer(uint8_t timerAction)
+{
   static uint64_t shutdownMillis = 0;
 
-  switch (timerAction) {
-    case START: {
-        if (preference.shutdownMinutes != 0) shutdownMillis = millis() + (preference.shutdownMinutes * 60000);
-        else shutdownMillis = 0;
-        break;
-      }
-    case STOP: {
-        shutdownMillis = 0;
-        break;
-      }
-    case CHECK: {
-        if (shutdownMillis != 0 && millis() > shutdownMillis) {
-          shutdownTimer(SHUTDOWN);
-        }
-        break;
-      }
-    case SHUTDOWN: {
+  switch (timerAction)
+  {
+  case START:
+  {
+    if (preference.shutdownMinutes != 0)
+      shutdownMillis = millis() + (preference.shutdownMinutes * 60000);
+    else
+      shutdownMillis = 0;
+    break;
+  }
+  case STOP:
+  {
+    shutdownMillis = 0;
+    break;
+  }
+  case CHECK:
+  {
+    if (shutdownMillis != 0 && millis() > shutdownMillis)
+    {
+      shutdownTimer(SHUTDOWN);
+    }
+    break;
+  }
+  case SHUTDOWN:
+  {
 #if defined STATUSLED ^ defined STATUSLEDRGB
-        statusLedUpdate(OFF, 0, 0, 0, 0);
+    statusLedUpdate(OFF, 0, 0, 0, 0);
 #endif
 #if defined POLOLUSWITCH
-        digitalWrite(shutdownPin, HIGH);
+    digitalWrite(shutdownPin, HIGH);
 #else
-        digitalWrite(shutdownPin, LOW);
+    digitalWrite(shutdownPin, LOW);
 #endif
-        mfrc522.PCD_AntennaOff();
-        mfrc522.PCD_SoftPowerDown();
-        mp3.sleep();
-        set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-        cli();
-        sleep_mode();
-        break;
-      }
-    default: {
-        break;
-      }
+    mfrc522.PCD_AntennaOff();
+    mfrc522.PCD_SoftPowerDown();
+    mp3.sleep();
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    cli();
+    sleep_mode();
+    break;
+  }
+  default:
+  {
+    break;
+  }
   }
 }
 
 // reads, writes, migrates and resets preferences in eeprom
-void preferences(uint8_t preferenceAction) {
+void preferences(uint8_t preferenceAction)
+{
   Serial.print(F("prefs "));
-  switch (preferenceAction) {
-    case READ: {
-        Serial.println(F("read"));
-        EEPROM.get(100, preference);
-        if (preference.cookie != preferenceCookie) preferences(RESET);
-        else {
-          Serial.print(F("  v"));
-          Serial.println(preference.version);
-          preferences(MIGRATE);
-        }
-        break;
-      }
-    case WRITE: {
-        Serial.println(F("write"));
-        EEPROM.put(100, preference);
-        break;
-      }
-    case MIGRATE: {
-        Serial.println(F("migrate"));
-        // prepared for future preferences migration
-        switch (preference.version) {
-          //case 1: {
-          //    Serial.println(F("  v1->v2"));
-          //    preference.version = 2;
-          //  }
-          //case 2: {
-          //    Serial.println(F("  v2->v3"));
-          //    preference.version = 3;
-          //    preferences(WRITE);
-          //    break;
-          //  }
-          default: {
-              Serial.println(F("  -"));
-              break;
-            }
-        }
-        break;
-      }
-    case RESET: {
-        Serial.println(F("reset"));
-        preference.cookie = preferenceCookie;
-        preference.version = preferenceVersion;
-        preference.mp3StartVolume = mp3StartVolumeDefault;
-        preference.mp3MaxVolume = mp3MaxVolumeDefault;
-        preference.mp3MenuVolume = mp3MenuVolumeDefault;
-        preference.mp3Equalizer = mp3EqualizerDefault;
-        preference.shutdownMinutes = shutdownMinutesDefault;
-        memcpy(preference.irRemoteUserCodes, irRemoteUserCodesDefault, 14);
-        preferences(WRITE);
-        break;
-      }
-    case RESET_PROGRESS: {
-        Serial.println(F("reset progress"));
-        for (uint16_t i = 1; i < 100; i++) EEPROM.update(i, 0);
-        break;
-      }
-    default: {
-        break;
-      }
+  switch (preferenceAction)
+  {
+  case READ:
+  {
+    Serial.println(F("read"));
+    EEPROM.get(100, preference);
+    if (preference.cookie != preferenceCookie)
+      preferences(RESET);
+    else
+    {
+      Serial.print(F("  v"));
+      Serial.println(preference.version);
+      preferences(MIGRATE);
+    }
+    break;
+  }
+  case WRITE:
+  {
+    Serial.println(F("write"));
+    EEPROM.put(100, preference);
+    break;
+  }
+  case MIGRATE:
+  {
+    Serial.println(F("migrate"));
+    // prepared for future preferences migration
+    switch (preference.version)
+    {
+    //case 1: {
+    //    Serial.println(F("  v1->v2"));
+    //    preference.version = 2;
+    //  }
+    //case 2: {
+    //    Serial.println(F("  v2->v3"));
+    //    preference.version = 3;
+    //    preferences(WRITE);
+    //    break;
+    //  }
+    default:
+    {
+      Serial.println(F("  -"));
+      break;
+    }
+    }
+    break;
+  }
+  case RESET:
+  {
+    Serial.println(F("reset"));
+    preference.cookie = preferenceCookie;
+    preference.version = preferenceVersion;
+    preference.mp3StartVolume = mp3StartVolumeDefault;
+    preference.mp3MaxVolume = mp3MaxVolumeDefault;
+    preference.mp3MenuVolume = mp3MenuVolumeDefault;
+    preference.mp3Equalizer = mp3EqualizerDefault;
+    preference.shutdownMinutes = shutdownMinutesDefault;
+    memcpy(preference.irRemoteUserCodes, irRemoteUserCodesDefault, 14);
+    preferences(WRITE);
+    break;
+  }
+  case RESET_PROGRESS:
+  {
+    Serial.println(F("reset progress"));
+    for (uint16_t i = 1; i < 100; i++)
+      EEPROM.update(i, 0);
+    break;
+  }
+  default:
+  {
+    break;
+  }
   }
 }
 
 // interactively prompts the user for options
-uint8_t prompt(uint8_t promptOptions, uint16_t promptHeading, uint16_t promptOffset, uint8_t promptCurrent, uint8_t promptFolder, bool promptPreview, bool promptChangeVolume) {
+uint8_t prompt(uint8_t promptOptions, uint16_t promptHeading, uint16_t promptOffset, uint8_t promptCurrent, uint8_t promptFolder, bool promptPreview, bool promptChangeVolume)
+{
   uint8_t promptResult = promptCurrent;
 
   mp3.playMp3FolderTrack(promptHeading);
-  while (true) {
+  while (true)
+  {
     playback.isPlaying = !digitalRead(mp3BusyPin);
     checkForInput();
     // serial console input
-    if (Serial.available() > 0) {
+    if (Serial.available() > 0)
+    {
       uint32_t promptResultSerial = Serial.parseInt();
-      if (promptResultSerial != 0 && promptResultSerial <= promptOptions) {
+      if (promptResultSerial != 0 && promptResultSerial <= promptOptions)
+      {
         Serial.println(promptResultSerial);
         return (uint8_t)promptResultSerial;
       }
     }
     // button 0 (middle) press or ir remote play+pause: confirm selection
-    if ((inputEvent == B0P || inputEvent == IRP) && promptResult != 0) {
-      if (promptPreview && !playback.isPlaying) {
-        if (promptFolder == 0) mp3.playFolderTrack(promptResult, 1);
-        else mp3.playFolderTrack(promptFolder, promptResult);
+    if ((inputEvent == B0P || inputEvent == IRP) && promptResult != 0)
+    {
+      if (promptPreview && !playback.isPlaying)
+      {
+        if (promptFolder == 0)
+          mp3.playFolderTrack(promptResult, 1);
+        else
+          mp3.playFolderTrack(promptFolder, promptResult);
       }
-      else return promptResult;
+      else
+        return promptResult;
     }
     // button 0 (middle) double click or ir remote center: announce current folder, track number or option
-    else if ((inputEvent == B0D || inputEvent == IRC) && promptResult != 0) {
-      if (promptPreview && playback.isPlaying) mp3.playAdvertisement(promptResult);
-      else if (promptPreview && !playback.isPlaying) {
-        if (promptFolder == 0) mp3.playFolderTrack(promptResult, 1);
-        else mp3.playFolderTrack(promptFolder, promptResult);
+    else if ((inputEvent == B0D || inputEvent == IRC) && promptResult != 0)
+    {
+      if (promptPreview && playback.isPlaying)
+        mp3.playAdvertisement(promptResult);
+      else if (promptPreview && !playback.isPlaying)
+      {
+        if (promptFolder == 0)
+          mp3.playFolderTrack(promptResult, 1);
+        else
+          mp3.playFolderTrack(promptFolder, promptResult);
       }
-      else {
-        if (promptChangeVolume) mp3.setVolume(promptResult + promptOffset);
+      else
+      {
+        if (promptChangeVolume)
+          mp3.setVolume(promptResult + promptOffset);
         mp3.playMp3FolderTrack(promptResult + promptOffset);
       }
     }
     // button 1 (right) press or ir remote up: next folder, track number or option
-    else if (inputEvent == B1P || inputEvent == IRU) {
+    else if (inputEvent == B1P || inputEvent == IRU)
+    {
       promptResult = min(promptResult + 1, promptOptions);
       Serial.println(promptResult);
-      if (promptPreview) {
-        if (promptFolder == 0) mp3.playFolderTrack(promptResult, 1);
-        else mp3.playFolderTrack(promptFolder, promptResult);
+      if (promptPreview)
+      {
+        if (promptFolder == 0)
+          mp3.playFolderTrack(promptResult, 1);
+        else
+          mp3.playFolderTrack(promptFolder, promptResult);
       }
-      else {
-        if (promptChangeVolume) mp3.setVolume(promptResult + promptOffset);
+      else
+      {
+        if (promptChangeVolume)
+          mp3.setVolume(promptResult + promptOffset);
         mp3.playMp3FolderTrack(promptResult + promptOffset);
       }
     }
     // button 2 (left) press or ir remote up: previous folder, track number or option
-    else if (inputEvent == B2P || inputEvent == IRD) {
+    else if (inputEvent == B2P || inputEvent == IRD)
+    {
       promptResult = max(promptResult - 1, 1);
       Serial.println(promptResult);
-      if (promptPreview) {
-        if (promptFolder == 0) mp3.playFolderTrack(promptResult, 1);
-        else mp3.playFolderTrack(promptFolder, promptResult);
+      if (promptPreview)
+      {
+        if (promptFolder == 0)
+          mp3.playFolderTrack(promptResult, 1);
+        else
+          mp3.playFolderTrack(promptFolder, promptResult);
       }
-      else {
-        if (promptChangeVolume) mp3.setVolume(promptResult + promptOffset);
+      else
+      {
+        if (promptChangeVolume)
+          mp3.setVolume(promptResult + promptOffset);
         mp3.playMp3FolderTrack(promptResult + promptOffset);
       }
     }
     // button 0 (middle) hold for 2 sec or ir remote menu: cancel
-    else if (inputEvent == B0H || inputEvent == IRM) {
+    else if (inputEvent == B0H || inputEvent == IRM)
+    {
       Serial.println(F("cancel"));
       return 0;
     }
     // button 1 (right) hold or ir remote right: jump 10 folders, tracks or options forward
-    else if (inputEvent == B1H || inputEvent == B4P || inputEvent == IRR) {
+    else if (inputEvent == B1H || inputEvent == B4P || inputEvent == IRR)
+    {
       promptResult = min(promptResult + 10, promptOptions);
       Serial.println(promptResult);
-      if (promptChangeVolume) mp3.setVolume(promptResult + promptOffset);
+      if (promptChangeVolume)
+        mp3.setVolume(promptResult + promptOffset);
       mp3.playMp3FolderTrack(promptResult + promptOffset);
     }
     // button 2 (left) hold or ir remote left: jump 10 folders, tracks or options backwards
-    else if (inputEvent == B2H || inputEvent == B3P || inputEvent == IRL) {
+    else if (inputEvent == B2H || inputEvent == B3P || inputEvent == IRL)
+    {
       promptResult = max(promptResult - 10, 1);
       Serial.println(promptResult);
-      if (promptChangeVolume) mp3.setVolume(promptResult + promptOffset);
+      if (promptChangeVolume)
+        mp3.setVolume(promptResult + promptOffset);
       mp3.playMp3FolderTrack(promptResult + promptOffset);
     }
 #if defined STATUSLED ^ defined STATUSLEDRGB
@@ -1802,9 +2254,11 @@ uint8_t prompt(uint8_t promptOptions, uint16_t promptHeading, uint16_t promptOff
 }
 
 // parents menu, offers various settings only parents do
-void parentsMenu() {
+void parentsMenu()
+{
 #if defined PINCODE
-  if (!enterPinCode()) return;
+  if (!enterPinCode())
+    return;
 #endif
 
   playback.playListMode = false;
@@ -1815,39 +2269,47 @@ void parentsMenu() {
   switchButtonConfiguration(CONFIG);
   shutdownTimer(STOP);
 
-  while (true) {
+  while (true)
+  {
     Serial.println(F("parents"));
     uint8_t selectedOption = prompt(10, 900, 909, 0, 0, false, false);
     // cancel
-    if (selectedOption == 0) {
+    if (selectedOption == 0)
+    {
       mp3.playMp3FolderTrack(904);
       waitPlaybackToFinish(255, 255, 0, 100);
       break;
     }
     // erase tag
-    else if (selectedOption == 1) {
+    else if (selectedOption == 1)
+    {
       Serial.println(F("erase tag"));
       mp3.playMp3FolderTrack(920);
       // loop until tag is erased
       uint8_t writeNfcTagStatus = 0;
-      while (!writeNfcTagStatus) {
+      while (!writeNfcTagStatus)
+      {
         checkForInput();
         // button 0 (middle) hold for 2 sec or ir remote menu: cancel erase nfc tag
-        if (inputEvent == B0H || inputEvent == IRM) {
+        if (inputEvent == B0H || inputEvent == IRM)
+        {
           Serial.println(F("cancel"));
           mp3.playMp3FolderTrack(923);
           waitPlaybackToFinish(255, 0, 0, 100);
           break;
         }
         // wait for nfc tag, erase once detected
-        if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+        if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial())
+        {
           uint8_t bytesToWrite[16] = {};
           writeNfcTagStatus = writeNfcTagData(bytesToWrite, sizeof(bytesToWrite));
-          if (writeNfcTagStatus == 1) {
+          if (writeNfcTagStatus == 1)
+          {
             mp3.playMp3FolderTrack(921);
             waitPlaybackToFinish(0, 255, 0, 100);
           }
-          else mp3.playMp3FolderTrack(922);
+          else
+            mp3.playMp3FolderTrack(922);
         }
 #if defined STATUSLED ^ defined STATUSLEDRGB
         statusLedUpdate(BLINK, 255, 0, 255, 500);
@@ -1856,10 +2318,12 @@ void parentsMenu() {
       }
     }
     // startup volume
-    else if (selectedOption == 2) {
+    else if (selectedOption == 2)
+    {
       Serial.println(F("start vol"));
       uint8_t promptResult = prompt(preference.mp3MaxVolume, 930, 0, preference.mp3StartVolume, 0, false, true);
-      if (promptResult != 0) {
+      if (promptResult != 0)
+      {
         preference.mp3StartVolume = promptResult;
         preferences(WRITE);
         // set volume to menu volume
@@ -1869,10 +2333,12 @@ void parentsMenu() {
       }
     }
     // maximum volume
-    else if (selectedOption == 3) {
+    else if (selectedOption == 3)
+    {
       Serial.println(F("max vol"));
       uint8_t promptResult = prompt(30, 931, 0, preference.mp3MaxVolume, 0, false, true);
-      if (promptResult != 0) {
+      if (promptResult != 0)
+      {
         preference.mp3MaxVolume = promptResult;
         // startup volume can't be higher than maximum volume
         preference.mp3StartVolume = min(preference.mp3StartVolume, preference.mp3MaxVolume);
@@ -1884,10 +2350,12 @@ void parentsMenu() {
       }
     }
     // parents volume
-    else if (selectedOption == 4) {
+    else if (selectedOption == 4)
+    {
       Serial.println(F("menu vol"));
       uint8_t promptResult = prompt(30, 932, 0, preference.mp3MenuVolume, 0, false, true);
-      if (promptResult != 0) {
+      if (promptResult != 0)
+      {
         preference.mp3MenuVolume = promptResult;
         preferences(WRITE);
         // set volume to menu volume
@@ -1897,10 +2365,12 @@ void parentsMenu() {
       }
     }
     // equalizer
-    else if (selectedOption == 5) {
+    else if (selectedOption == 5)
+    {
       Serial.println(F("eq"));
       uint8_t promptResult = prompt(6, 940, 940, preference.mp3Equalizer, 0, false, false);
-      if (promptResult != 0) {
+      if (promptResult != 0)
+      {
         preference.mp3Equalizer = promptResult;
         mp3.setEq((DfMp3_Eq)(preference.mp3Equalizer - 1));
         preferences(WRITE);
@@ -1909,22 +2379,26 @@ void parentsMenu() {
       }
     }
     // learn ir remote
-    else if (selectedOption == 6) {
+    else if (selectedOption == 6)
+    {
 #if defined IRREMOTE
       Serial.println(F("learn remote"));
-      for (uint8_t i = 0; i < 7; i++) {
+      for (uint8_t i = 0; i < 7; i++)
+      {
         mp3.playMp3FolderTrack(951 + i);
         waitPlaybackToFinish(0, 0, 255, 500);
         // clear ir receive buffer
         irReceiver.resume();
         // wait for ir signal
-        while (!irReceiver.decode(&irReading)) {
+        while (!irReceiver.decode(&irReading))
+        {
 #if defined STATUSLED ^ defined STATUSLEDRGB
           statusLedUpdate(BLINK, 0, 0, 255, 300);
 #endif
         }
         // on NEC encoding 0xFFFFFFFF means the button is held down, we ignore this
-        if (!(irReading.decode_type == NEC && irReading.value == 0xFFFFFFFF)) {
+        if (!(irReading.decode_type == NEC && irReading.value == 0xFFFFFFFF))
+        {
           // convert irReading.value from 32bit to 16bit
           uint16_t irRemoteCode = (irReading.value & 0xFFFF);
           Serial.print(F("ir code: 0x"));
@@ -1938,7 +2412,8 @@ void parentsMenu() {
 #endif
         }
         // key was held down on NEC encoding, repeat last question
-        else {
+        else
+        {
           i--;
 #if defined STATUSLED ^ defined STATUSLEDRGB
           statusLedUpdate(BURST4, 255, 0, 0, 0);
@@ -1955,42 +2430,53 @@ void parentsMenu() {
 #endif
     }
     // shutdown timer
-    else if (selectedOption == 7) {
+    else if (selectedOption == 7)
+    {
       Serial.println(F("timer"));
       uint8_t promptResult = prompt(7, 960, 960, 0, 0, false, false);
-      if (promptResult != 0) {
-        switch (promptResult) {
-          case 1: {
-              preference.shutdownMinutes = 5;
-              break;
-            }
-          case 2: {
-              preference.shutdownMinutes = 10;
-              break;
-            }
-          case 3: {
-              preference.shutdownMinutes = 15;
-              break;
-            }
-          case 4: {
-              preference.shutdownMinutes = 20;
-              break;
-            }
-          case 5: {
-              preference.shutdownMinutes = 30;
-              break;
-            }
-          case 6: {
-              preference.shutdownMinutes = 60;
-              break;
-            }
-          case 7: {
-              preference.shutdownMinutes = 0;
-              break;
-            }
-          default: {
-              break;
-            }
+      if (promptResult != 0)
+      {
+        switch (promptResult)
+        {
+        case 1:
+        {
+          preference.shutdownMinutes = 5;
+          break;
+        }
+        case 2:
+        {
+          preference.shutdownMinutes = 10;
+          break;
+        }
+        case 3:
+        {
+          preference.shutdownMinutes = 15;
+          break;
+        }
+        case 4:
+        {
+          preference.shutdownMinutes = 20;
+          break;
+        }
+        case 5:
+        {
+          preference.shutdownMinutes = 30;
+          break;
+        }
+        case 6:
+        {
+          preference.shutdownMinutes = 60;
+          break;
+        }
+        case 7:
+        {
+          preference.shutdownMinutes = 0;
+          break;
+        }
+        default:
+        {
+          break;
+        }
         }
         preferences(WRITE);
         mp3.playMp3FolderTrack(901);
@@ -1998,13 +2484,15 @@ void parentsMenu() {
       }
     }
     // reset progress
-    else if (selectedOption == 8) {
+    else if (selectedOption == 8)
+    {
       preferences(RESET_PROGRESS);
       mp3.playMp3FolderTrack(902);
       waitPlaybackToFinish(0, 255, 0, 100);
     }
     // reset preferences
-    else if (selectedOption == 9) {
+    else if (selectedOption == 9)
+    {
       preferences(RESET);
       mp3.setVolume(preference.mp3MenuVolume);
       mp3.setEq((DfMp3_Eq)(preference.mp3Equalizer - 1));
@@ -2012,7 +2500,8 @@ void parentsMenu() {
       waitPlaybackToFinish(0, 255, 0, 100);
     }
     // manual box shutdown
-    else if (selectedOption == 10) {
+    else if (selectedOption == 10)
+    {
       Serial.println(F("manual shut"));
       shutdownTimer(SHUTDOWN);
     }
@@ -2029,7 +2518,8 @@ void parentsMenu() {
 
 #if defined PINCODE
 // requests pin code from user via buttons or ir remote
-bool enterPinCode() {
+bool enterPinCode()
+{
   uint8_t pinCodeEntered[pinCodeLength];
   uint8_t pinCodeSlot = 0;
   uint64_t cancelEnterPinCodeMillis = millis() + enterPinCodeTimeout;
@@ -2044,12 +2534,15 @@ bool enterPinCode() {
 
   Serial.println(F("pin?"));
   mp3.playMp3FolderTrack(810);
-  while (true) {
+  while (true)
+  {
     checkForInput();
     // map ir inputs to corresponding button inputs
-    if (inputEvent >= 16) inputEvent = pinCodeIrToButtonMapping[inputEvent - 16];
+    if (inputEvent >= 16)
+      inputEvent = pinCodeIrToButtonMapping[inputEvent - 16];
     // button 0 (middle) hold for 2 sec or ir remote menu: cancel
-    if (inputEvent == B0H || inputEvent == IRM || millis() > cancelEnterPinCodeMillis) {
+    if (inputEvent == B0H || inputEvent == IRM || millis() > cancelEnterPinCodeMillis)
+    {
       Serial.println(F("cancel"));
       mp3.playMp3FolderTrack(811);
       waitPlaybackToFinish(255, 0, 0, 100);
@@ -2064,13 +2557,18 @@ bool enterPinCode() {
       return false;
     }
     // record inputs
-    if (inputEvent != NOACTION) pinCodeEntered[pinCodeSlot++] = inputEvent;
+    if (inputEvent != NOACTION)
+      pinCodeEntered[pinCodeSlot++] = inputEvent;
     // if the complete pin code has been recorded
-    if (pinCodeSlot == pinCodeLength) {
+    if (pinCodeSlot == pinCodeLength)
+    {
       // compare entered with stored pin code
-      for (uint8_t i = 0; i < pinCodeLength; i++) if (pinCode[i] != pinCodeEntered[i]) pinCodeMatch = false;
+      for (uint8_t i = 0; i < pinCodeLength; i++)
+        if (pinCode[i] != pinCodeEntered[i])
+          pinCodeMatch = false;
       // we have a match, exit
-      if (pinCodeMatch) {
+      if (pinCodeMatch)
+      {
         // restore playback volume, can't be higher than maximum volume
         mp3.setVolume(playback.mp3CurrentVolume = min(playback.mp3CurrentVolume, preference.mp3MaxVolume));
 
@@ -2081,7 +2579,8 @@ bool enterPinCode() {
         return true;
       }
       // we don't have a match, repeat
-      else {
+      else
+      {
         Serial.println(F("pin?"));
         mp3.playMp3FolderTrack(810);
         cancelEnterPinCodeMillis = millis() + enterPinCodeTimeout;
@@ -2102,84 +2601,111 @@ bool enterPinCode() {
 
 #if defined STATUSLED ^ defined STATUSLEDRGB
 // updates status led(s) with various pulse, blink or burst patterns
-void statusLedUpdate(uint8_t statusLedAction, uint8_t red, uint8_t green, uint8_t blue, uint16_t statusLedUpdateInterval) {
+void statusLedUpdate(uint8_t statusLedAction, uint8_t red, uint8_t green, uint8_t blue, uint16_t statusLedUpdateInterval)
+{
   static bool statusLedState = true;
   static bool statusLedDirection = false;
   static int16_t statusLedFade = 255;
   static uint64_t statusLedOldMillis;
 
-  if (millis() - statusLedOldMillis >= statusLedUpdateInterval) {
+  if (millis() - statusLedOldMillis >= statusLedUpdateInterval)
+  {
     statusLedOldMillis = millis();
-    switch (statusLedAction) {
-      case OFF: {
-          statusLedUpdateHal(red, green, blue, 0);
-          break;
-        }
-      case SOLID: {
+    switch (statusLedAction)
+    {
+    case OFF:
+    {
+      statusLedUpdateHal(red, green, blue, 0);
+      break;
+    }
+    case SOLID:
+    {
+      statusLedFade = 255;
+      statusLedUpdateHal(red, green, blue, 255);
+      break;
+    }
+    case PULSE:
+    {
+      if (statusLedDirection)
+      {
+        statusLedFade += 10;
+        if (statusLedFade >= 255)
+        {
           statusLedFade = 255;
+          statusLedDirection = !statusLedDirection;
+        }
+      }
+      else
+      {
+        statusLedFade -= 10;
+        if (statusLedFade <= 0)
+        {
+          statusLedFade = 0;
+          statusLedDirection = !statusLedDirection;
+        }
+      }
+      statusLedUpdateHal(red, green, blue, statusLedFade);
+      break;
+    }
+    case BLINK:
+    {
+      statusLedState = !statusLedState;
+      if (statusLedState)
+        statusLedUpdateHal(red, green, blue, 255);
+      else
+        statusLedUpdateHal(0, 0, 0, 0);
+      break;
+    }
+    case BURST2:
+    {
+      for (uint8_t i = 0; i < 4; i++)
+      {
+        statusLedState = !statusLedState;
+        if (statusLedState)
           statusLedUpdateHal(red, green, blue, 255);
-          break;
-        }
-      case PULSE: {
-          if (statusLedDirection) {
-            statusLedFade += 10;
-            if (statusLedFade >= 255) {
-              statusLedFade = 255;
-              statusLedDirection = !statusLedDirection;
-            }
-          }
-          else {
-            statusLedFade -= 10;
-            if (statusLedFade <= 0) {
-              statusLedFade = 0;
-              statusLedDirection = !statusLedDirection;
-            }
-          }
-          statusLedUpdateHal(red, green, blue, statusLedFade);
-          break;
-        }
-      case BLINK: {
-          statusLedState = !statusLedState;
-          if (statusLedState) statusLedUpdateHal(red, green, blue, 255);
-          else statusLedUpdateHal(0, 0, 0, 0);
-          break;
-        }
-      case BURST2: {
-          for (uint8_t i = 0; i < 4; i++) {
-            statusLedState = !statusLedState;
-            if (statusLedState) statusLedUpdateHal(red, green, blue, 255);
-            else statusLedUpdateHal(0, 0, 0, 0);
-            delay(100);
-          }
-          break;
-        }
-      case BURST4: {
-          for (uint8_t i = 0; i < 8; i++) {
-            statusLedState = !statusLedState;
-            if (statusLedState) statusLedUpdateHal(red, green, blue, 255);
-            else statusLedUpdateHal(0, 0, 0, 0);
-            delay(100);
-          }
-          break;
-        }
-      case BURST8: {
-          for (uint8_t i = 0; i < 16; i++) {
-            statusLedState = !statusLedState;
-            if (statusLedState) statusLedUpdateHal(red, green, blue, 255);
-            else statusLedUpdateHal(0, 0, 0, 0);
-            delay(100);
-          }
-          break;
-        }
-      default: {
-          break;
-        }
+        else
+          statusLedUpdateHal(0, 0, 0, 0);
+        delay(100);
+      }
+      break;
+    }
+    case BURST4:
+    {
+      for (uint8_t i = 0; i < 8; i++)
+      {
+        statusLedState = !statusLedState;
+        if (statusLedState)
+          statusLedUpdateHal(red, green, blue, 255);
+        else
+          statusLedUpdateHal(0, 0, 0, 0);
+        delay(100);
+      }
+      break;
+    }
+    case BURST8:
+    {
+      for (uint8_t i = 0; i < 16; i++)
+      {
+        statusLedState = !statusLedState;
+        if (statusLedState)
+          statusLedUpdateHal(red, green, blue, 255);
+        else
+          statusLedUpdateHal(0, 0, 0, 0);
+        delay(100);
+      }
+      break;
+    }
+    default:
+    {
+      break;
+    }
     }
   }
 }
 
 // abstracts status led(s) depending on what hardware is actually used (vanilla or ws281x led(s))
-void statusLedUpdateHal(uint8_t red, uint8_t green, uint8_t blue, int16_t brightness) {
+void statusLedUpdateHal(uint8_t red, uint8_t green, uint8_t blue, int16_t brightness)
+{
 #if defined STATUSLEDRGB
   cRGB rgbLedColor;
 
@@ -2189,7 +2715,8 @@ void statusLedUpdateHal(uint8_t red, uint8_t green, uint8_t blue, int16_t bright
   rgbLedColor.b = (uint8_t)(((brightness / 255.0) * blue) * (min(statusLedMaxBrightness, 100) / 100.0));
 
   // update led buffer
-  for (uint8_t i = 0; i < statusLedCount; i++) rgbLed.set_crgb_at(i, rgbLedColor);
+  for (uint8_t i = 0; i < statusLedCount; i++)
+    rgbLed.set_crgb_at(i, rgbLedColor);
 
   // send out the updated buffer
   rgbLed.sync();
