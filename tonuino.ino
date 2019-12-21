@@ -253,6 +253,11 @@
 // uncomment line below for rotary encoder instead of 3 buttons
 #define ROTARY
 
+#if defined ROTARY
+#include <EnableInterrupt.h>
+#define NEOSWSERIAL_EXTERNAL_PCINT // uncomment to use our own PCINT ISRs
+#endif
+
 // include required libraries
 #include <avr/sleep.h>
 #include <NeoSWSerial.h>
@@ -379,8 +384,8 @@ const uint8_t shutdownPin = 7;        // pin used to shutdown the system
 const uint8_t nfcResetPin = 9;        // used for spi communication to nfc module
 const uint8_t nfcSlaveSelectPin = 10; // used for spi communication to nfc module
 const uint8_t button0Pin = A1;        // middle button
-const uint8_t button1Pin = A2;        // right button
-const uint8_t button2Pin = A3;        // left button
+const uint8_t button1Pin = A3;        // right button
+const uint8_t button2Pin = A2;        // left button
 #if defined FIVEBUTTONS
 const uint8_t button3Pin = A3; // optional 4th button
 const uint8_t button4Pin = A4; // optional 5th button
@@ -394,7 +399,7 @@ const uint8_t longRot = 3; // threshold for a long rotation, otherwise counted
 const uint16_t buttonClickDelay = 1000;          // time during which a button click is still a click (in milliseconds)
 const uint16_t buttonShortLongPressDelay = 2000; // time after which a button press is considered a long press (in milliseconds)
 const uint16_t buttonLongLongPressDelay = 5000;  // longer long press delay for special cases, i.e. to trigger erase nfc tag mode (in milliseconds)
-const uint32_t debugConsoleSpeed = 115200;         // speed for the debug console
+const uint32_t debugConsoleSpeed = 115200;       // speed for the debug console
 
 // number of mp3 files in advert folder + number of mp3 files in mp3 folder
 const uint16_t msgCount = 576;
@@ -506,6 +511,8 @@ preferenceStruct preference;
 void checkForInput();
 void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* buttonState */);
 #if defined ROTARY
+void serialISR();
+void rotaryISR();
 void checkRotaryEncoder();
 #endif
 void switchButtonConfiguration(uint8_t buttonMode);
@@ -618,14 +625,14 @@ public:
 };
 
 NeoSWSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin); // create SoftwareSerial instance
-MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);          // create MFRC522 instance
+MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);       // create MFRC522 instance
 DFMiniMp3<NeoSWSerial, Mp3Notify> mp3(mp3Serial);      // create DFMiniMp3 instance
-ButtonConfig button0Config;                               // create ButtonConfig instance
-ButtonConfig button1Config;                               // create ButtonConfig instance
-ButtonConfig button2Config;                               // create ButtonConfig instance
-AceButton button0(&button0Config);                        // create AceButton instance
-AceButton button1(&button1Config);                        // create AceButton instance
-AceButton button2(&button2Config);                        // create AceButton instance
+ButtonConfig button0Config;                            // create ButtonConfig instance
+ButtonConfig button1Config;                            // create ButtonConfig instance
+ButtonConfig button2Config;                            // create ButtonConfig instance
+AceButton button0(&button0Config);                     // create AceButton instance
+AceButton button1(&button1Config);                     // create AceButton instance
+AceButton button2(&button2Config);                     // create AceButton instance
 #if defined FIVEBUTTONS
 ButtonConfig button3Config;        // create ButtonConfig instance
 ButtonConfig button4Config;        // create ButtonConfig instance
@@ -718,8 +725,8 @@ void setup()
   button1.init(button1Pin, HIGH, 1);
   button2.init(button2Pin, HIGH, 2);
 #else
-  PCICR |= (1 << PCIE1);      // enable pin change interrupt for PCINT14..8
-  PCMSK1 |= (1 << PCINT10);    // Enable Pin Change interrupt for ADC0 (analog PIN 0) INT8
+  enableInterrupt(mp3SerialRxPin, serialISR, CHANGE);
+  enableInterrupt(button1Pin, rotaryISR, CHANGE);
 #endif
 #if defined FIVEBUTTONS
   pinMode(button3Pin, INPUT_PULLUP);
@@ -1415,10 +1422,15 @@ void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* butto
 }
 
 #if defined ROTARY
-
-void checkRotaryEncoder()
+void serialISR()
 {
-uint8_t value = digitalRead(button1Pin);
+  NeoSWSerial::rxISR(*portInputRegister(digitalPinToPort(mp3SerialRxPin)));
+  //  This is uglier than passing PIND, but it works for any RX_PIN you choose.
+}
+
+void rotaryISR()
+{
+  uint8_t value = digitalRead(button1Pin);
   if (value != valRot)
   {
     if (digitalRead(button2Pin) != value)
@@ -1432,35 +1444,35 @@ uint8_t value = digitalRead(button1Pin);
     lastRot = millis();
   }
   valRot = value;
-  if (numRot != 0 && millis() - lastRot > buttonClickDelay)
+}
+
+void checkRotaryEncoder() {
+  uint8_t value = digitalRead(button1Pin);
+  if (numRot != 0 && millis() - lastRot > buttonClickDelay>>2)
   {
     if (abs(numRot) < longRot)
-        {
-          if (numRot > 0)
-          {
-            inputEvent = B1P;
-            Serial.println(F("Short right"));
-          }
-          else
-          {
-            inputEvent = B2P;
-            Serial.println(F("Short left"));
-          }
-        }
+    {
+      if (numRot > 0)
+      {
+        inputEvent = B1P;
+      }
       else
       {
-        if (numRot > 0)
-        {
-          inputEvent = B1H;
-          Serial.println(F("Long right"));
-        }
-        else
-        {
-          inputEvent = B2H;
-          Serial.println(F("Long left"));
-        }
+        inputEvent = B2P;
       }
-      numRot = 0;
+    }
+    else
+    {
+      if (numRot > 0)
+      {
+        inputEvent = B1H;
+      }
+      else
+      {
+        inputEvent = B2H;
+      }
+    }
+    numRot = 0;
   }
 }
 #endif
