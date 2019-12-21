@@ -255,7 +255,7 @@
 
 // include required libraries
 #include <avr/sleep.h>
-#include <SoftwareSerial.h>
+#include <NeoSWSerial.h>
 #include <SPI.h>
 #include <EEPROM.h>
 #include <MFRC522.h>
@@ -379,8 +379,8 @@ const uint8_t shutdownPin = 7;        // pin used to shutdown the system
 const uint8_t nfcResetPin = 9;        // used for spi communication to nfc module
 const uint8_t nfcSlaveSelectPin = 10; // used for spi communication to nfc module
 const uint8_t button0Pin = A1;        // middle button
-const uint8_t button1Pin = A3;        // right button
-const uint8_t button2Pin = A2;        // left button
+const uint8_t button1Pin = A2;        // right button
+const uint8_t button2Pin = A3;        // left button
 #if defined FIVEBUTTONS
 const uint8_t button3Pin = A3; // optional 4th button
 const uint8_t button4Pin = A4; // optional 5th button
@@ -617,9 +617,9 @@ public:
   }
 };
 
-SoftwareSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin); // create SoftwareSerial instance
+NeoSWSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin); // create SoftwareSerial instance
 MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);          // create MFRC522 instance
-DFMiniMp3<SoftwareSerial, Mp3Notify> mp3(mp3Serial);      // create DFMiniMp3 instance
+DFMiniMp3<NeoSWSerial, Mp3Notify> mp3(mp3Serial);      // create DFMiniMp3 instance
 ButtonConfig button0Config;                               // create ButtonConfig instance
 ButtonConfig button1Config;                               // create ButtonConfig instance
 ButtonConfig button2Config;                               // create ButtonConfig instance
@@ -714,8 +714,13 @@ void setup()
   pinMode(button1Pin, INPUT_PULLUP);
   pinMode(button2Pin, INPUT_PULLUP);
   button0.init(button0Pin, HIGH, 0);
+#if not defined ROTARY
   button1.init(button1Pin, HIGH, 1);
   button2.init(button2Pin, HIGH, 2);
+#else
+  PCICR |= (1 << PCIE1);      // enable pin change interrupt for PCINT14..8
+  PCMSK1 |= (1 << PCINT10);    // Enable Pin Change interrupt for ADC0 (analog PIN 0) INT8
+#endif
 #if defined FIVEBUTTONS
   pinMode(button3Pin, INPUT_PULLUP);
   pinMode(button4Pin, INPUT_PULLUP);
@@ -1410,9 +1415,10 @@ void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* butto
 }
 
 #if defined ROTARY
+
 void checkRotaryEncoder()
 {
-  uint8_t value = digitalRead(button1Pin);
+uint8_t value = digitalRead(button1Pin);
   if (value != valRot)
   {
     if (digitalRead(button2Pin) != value)
