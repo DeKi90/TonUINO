@@ -253,14 +253,9 @@
 // uncomment line below for rotary encoder instead of 3 buttons
 #define ROTARY
 
-#if defined ROTARY
-#include <EnableInterrupt.h>
-#define NEOSWSERIAL_EXTERNAL_PCINT // uncomment to use our own PCINT ISRs
-#endif
-
 // include required libraries
 #include <avr/sleep.h>
-#include <NeoSWSerial.h>
+#include <SoftwareSerial.h>
 #include <SPI.h>
 #include <EEPROM.h>
 #include <MFRC522.h>
@@ -394,12 +389,12 @@ const uint8_t button4Pin = A4; // optional 5th button
 const uint8_t volumePin = A0; // analog pin for volume control
 #endif
 #if defined ROTARY
-const uint8_t longRot = 3; // threshold for a long rotation, otherwise counted
+const uint8_t longRot = 3; // threshold for a long rotation = hold
 #endif
 const uint16_t buttonClickDelay = 1000;          // time during which a button click is still a click (in milliseconds)
 const uint16_t buttonShortLongPressDelay = 2000; // time after which a button press is considered a long press (in milliseconds)
 const uint16_t buttonLongLongPressDelay = 5000;  // longer long press delay for special cases, i.e. to trigger erase nfc tag mode (in milliseconds)
-const uint32_t debugConsoleSpeed = 115200;       // speed for the debug console
+const uint32_t debugConsoleSpeed = 115200;         // speed for the debug console
 
 // number of mp3 files in advert folder + number of mp3 files in mp3 folder
 const uint16_t msgCount = 576;
@@ -511,8 +506,7 @@ preferenceStruct preference;
 void checkForInput();
 void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* buttonState */);
 #if defined ROTARY
-void serialISR();
-void rotaryISR();
+void setupRotaryEncoder();
 void checkRotaryEncoder();
 #endif
 void switchButtonConfiguration(uint8_t buttonMode);
@@ -559,6 +553,16 @@ public:
     case DfMp3_Error_SerialWrongStack:
     {
       Serial.print(F("serial stack"));
+      break;
+    }
+    case DfMp3_Error_PacketSize:
+    {
+      Serial.print(F("pkt size"));
+      break;
+    }
+    case DfMp3_Error_PacketHeader:
+    {
+      Serial.print(F("pkt head"));
       break;
     }
     case DfMp3_Error_CheckSumNotMatch:
@@ -624,15 +628,15 @@ public:
   }
 };
 
-NeoSWSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin); // create SoftwareSerial instance
-MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);       // create MFRC522 instance
-DFMiniMp3<NeoSWSerial, Mp3Notify> mp3(mp3Serial);      // create DFMiniMp3 instance
-ButtonConfig button0Config;                            // create ButtonConfig instance
-ButtonConfig button1Config;                            // create ButtonConfig instance
-ButtonConfig button2Config;                            // create ButtonConfig instance
-AceButton button0(&button0Config);                     // create AceButton instance
-AceButton button1(&button1Config);                     // create AceButton instance
-AceButton button2(&button2Config);                     // create AceButton instance
+SoftwareSerial mp3Serial(mp3SerialRxPin, mp3SerialTxPin); // create SoftwareSerial instance
+MFRC522 mfrc522(nfcSlaveSelectPin, nfcResetPin);          // create MFRC522 instance
+DFMiniMp3<SoftwareSerial, Mp3Notify> mp3(mp3Serial);      // create DFMiniMp3 instance
+ButtonConfig button0Config;                               // create ButtonConfig instance
+ButtonConfig button1Config;                               // create ButtonConfig instance
+ButtonConfig button2Config;                               // create ButtonConfig instance
+AceButton button0(&button0Config);                        // create AceButton instance
+AceButton button1(&button1Config);                        // create AceButton instance
+AceButton button2(&button2Config);                        // create AceButton instance
 #if defined FIVEBUTTONS
 ButtonConfig button3Config;        // create ButtonConfig instance
 ButtonConfig button4Config;        // create ButtonConfig instance
@@ -725,8 +729,7 @@ void setup()
   button1.init(button1Pin, HIGH, 1);
   button2.init(button2Pin, HIGH, 2);
 #else
-  enableInterrupt(mp3SerialRxPin, serialISR, CHANGE);
-  enableInterrupt(button1Pin, rotaryISR, CHANGE);
+  setupRotaryEncoder();
 #endif
 #if defined FIVEBUTTONS
   pinMode(button3Pin, INPUT_PULLUP);
@@ -1422,14 +1425,21 @@ void translateButtonInput(AceButton *button, uint8_t eventType, uint8_t /* butto
 }
 
 #if defined ROTARY
-void serialISR()
-{
-  NeoSWSerial::rxISR(*portInputRegister(digitalPinToPort(mp3SerialRxPin)));
-  //  This is uglier than passing PIND, but it works for any RX_PIN you choose.
+void setupRotaryEncoder(){
+TCCR1A = 0;// set entire TCCR1A register to 0
+  TCCR1B = 0;// same for TCCR1B
+  TCNT1  = 0;//initialize counter value to 0;
+  // set timer count for 1khz increments
+  OCR1A = 1999;// = (16*10^6) / (1000*8) - 1
+  // turn on CTC mode
+  TCCR1B |= (1 << WGM12);
+  // Set CS11 bit for 8 prescaler
+  TCCR1B |= (1 << CS11);   
+  // enable timer compare interrupt
+  TIMSK1 |= (1 << OCIE1A);
 }
 
-void rotaryISR()
-{
+ISR(TIMER1_COMPA_vect){
   uint8_t value = digitalRead(button1Pin);
   if (value != valRot)
   {
@@ -1446,33 +1456,40 @@ void rotaryISR()
   valRot = value;
 }
 
-void checkRotaryEncoder() {
-  uint8_t value = digitalRead(button1Pin);
-  if (numRot != 0 && millis() - lastRot > buttonClickDelay>>2)
+void checkRotaryEncoder()
+{
+  if (numRot != 0 && millis() - lastRot > buttonClickDelay)
   {
+    Serial.print(numRot);
     if (abs(numRot) < longRot)
-    {
-      if (numRot > 0)
-      {
-        inputEvent = B1P;
-      }
+        {
+          Serial.print(F("s"));
+          if (numRot > 0)
+          {
+            inputEvent = B1P;
+            Serial.println(F("r"));
+          }
+          else
+          {
+            inputEvent = B2P;
+            Serial.println(F("l"));
+          }
+        }
       else
       {
-        inputEvent = B2P;
+        Serial.print(F("l"));
+        if (numRot > 0)
+        {
+          inputEvent = B1H;
+          Serial.println(F("r"));
+        }
+        else
+        {
+          inputEvent = B2H;
+          Serial.println(F("l"));
+        }
       }
-    }
-    else
-    {
-      if (numRot > 0)
-      {
-        inputEvent = B1H;
-      }
-      else
-      {
-        inputEvent = B2H;
-      }
-    }
-    numRot = 0;
+      numRot = 0;
   }
 }
 #endif
